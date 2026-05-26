@@ -1,0 +1,41 @@
+node_modules
+.pnpm-store
+
+# build
+.next
+dist
+out
+.turbo
+
+# env
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# misc
+.DS_Store
+*.log
+.cache
+coverage
+
+# editor
+.vscode/*
+!.vscode/settings.json.example
+.idea
+
+# supabase
+supabase/.branches
+supabase/.temp
+
+# runtime
+logs/
+data/
+playwright-report/
+test-results/
+
+# build outputs
+*.tsbuildinfo
+
+# hackathon journal (private notes)
+HACKATHON_DAILY.txt
