@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "note": "v1 = emoji placeholders rendered by /render/video/card. Real green-screen MP4s slot in by adding {url, type:'mp4', chroma:'#00ff00'} entries.",
+  "cats": [
+    { "id": "popcat",    "emotion": "shock",     "emoji": "😮", "color": "#ff5722" },
+    { "id": "smug",      "emotion": "smug",      "emoji": "😏", "color": "#3d5afe" },
+    { "id": "screaming", "emotion": "rage",      "emoji": "😾", "color": "#e91e63" },
+    { "id": "huh",       "emotion": "confused",  "emoji": "🤔", "color": "#ffc107" },
+    { "id": "cry",       "emotion": "sad",       "emoji": "😿", "color": "#00bcd4" },
+    { "id": "judge",     "emotion": "judging",   "emoji": "🙀", "color": "#9c27b0" },
+    { "id": "sleep",     "emotion": "tired",     "emoji": "😴", "color": "#607d8b" },
+    { "id": "happy",     "emotion": "happy",     "emoji": "😸", "color": "#4caf50" }
+  ]
+}
