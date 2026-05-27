@@ -1,0 +1,82 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@theme inline {
+  --color-ink:            oklch(15% 0.012 60);
+  --color-ink-2:          oklch(30% 0.018 60);
+  --color-ink-3:          oklch(52% 0.024 70);
+  --color-paper:          oklch(92% 0.028 88);    /* cream — matches the illustrations */
+  --color-paper-2:        oklch(88% 0.032 86);
+  --color-paper-3:        oklch(84% 0.036 84);
+  --color-paper-glow:     oklch(95% 0.045 88);
+  --color-accent:         oklch(70% 0.18 12);     /* warm magenta-pink risograph splash */
+  --color-accent-strong:  oklch(58% 0.22 8);
+  --color-signal-good:    oklch(68% 0.14 145);
+  --color-signal-bad:     oklch(60% 0.21 30);
+
+  --color-surface:        var(--color-paper);
+  --color-surface-2:      var(--color-paper-2);
+  --color-surface-3:      var(--color-paper-3);
+  --color-border:         oklch(76% 0.038 80);
+  --color-border-strong:  oklch(50% 0.05 70);
+
+  --font-display:         'Helvetica Now Display', 'Inter Display', 'Inter', system-ui, sans-serif;
+  --font-sans:            'Inter', system-ui, sans-serif;
+  --font-mono:            'Geist Mono', 'JetBrains Mono', ui-monospace, monospace;
+
+  --text-mega:            clamp(4rem, 13vw, 12rem);
+  --text-giant:           clamp(2.75rem, 8vw, 6.5rem);
+  --text-display:         clamp(1.5rem, 3.5vw, 2.75rem);
+
+  --radius-xs:            0.25rem;
+  --radius-sm:            0.5rem;
+  --radius-md:            0.75rem;
+  --radius-lg:            1.25rem;
+  --radius-xl:            2rem;
+  --radius-pill:          999px;
+
+  --shadow-soft:          0 1px 0 oklch(100% 0 0 / 0.5), 0 8px 24px -10px oklch(0% 0 0 / 0.18);
+  --shadow-lifted:        0 1px 0 oklch(100% 0 0 / 0.6), 0 24px 48px -16px oklch(0% 0 0 / 0.22);
+  --shadow-ring:          0 0 0 1px var(--color-border) inset;
+
+  --ease-spring:          cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+html, body { background: var(--color-paper); color: var(--color-ink); }
+body {
+  font-family: var(--font-sans);
+  font-feature-settings: 'ss01', 'cv11';
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  letter-spacing: -0.005em;
+}
+
+::selection { background: var(--color-ink); color: var(--color-paper); }
+
+.font-display { font-family: var(--font-display); font-weight: 700; letter-spacing: -0.04em; }
+.font-mono    { font-family: var(--font-mono); }
+.surface      { background: var(--color-surface); }
+.surface-2    { background: var(--color-surface-2); }
+.surface-3    { background: var(--color-surface-3); }
+.ring-soft    { box-shadow: var(--shadow-ring); }
+.lift         { box-shadow: var(--shadow-soft); }
+.lift-2       { box-shadow: var(--shadow-lifted); }
+
+@keyframes marquee {
+  from { transform: translateX(0); }
+  to   { transform: translateX(-50%); }
+}
+.animate-marquee {
+  animation: marquee 30s linear infinite;
+  will-change: transform;
+}
+
+@keyframes glow-drift {
+  0%, 100% { transform: translate3d(0,0,0) scale(1); }
+  50%      { transform: translate3d(2vw, -2vh, 0) scale(1.1); }
+}
+.glow-blob {
+  background: radial-gradient(circle at 50% 50%, var(--color-paper-glow), transparent 65%);
+  filter: blur(40px);
+  animation: glow-drift 14s var(--ease-spring) infinite;
+}
