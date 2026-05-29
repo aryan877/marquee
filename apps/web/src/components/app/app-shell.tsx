@@ -70,7 +70,7 @@ export function AppShell({
  </button>
  </header>
 
- <main className="min-w-0">
+ <main className="flex min-h-0 min-w-0 flex-col">
  {menuOpen && (
  <nav className="border-b border-[var(--color-border)] bg-[var(--color-paper-2)] p-3 md:hidden">
  <ul className="grid grid-cols-2 gap-2">

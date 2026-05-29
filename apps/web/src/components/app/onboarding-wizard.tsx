@@ -71,7 +71,7 @@ export function OnboardingWizard() {
  }
 
  return (
- <div className="grid min-h-[calc(100vh-3.5rem)] lg:grid-cols-[1fr_420px]">
+ <div className="grid flex-1 lg:grid-cols-[1fr_420px]">
  <section className="flex flex-col px-6 py-10 md:px-12">
  <header className="flex items-baseline justify-between">
  <div>
