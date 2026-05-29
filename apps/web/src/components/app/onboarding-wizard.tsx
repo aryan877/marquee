@@ -393,7 +393,7 @@ function PreviewCard({
  <div className="font-mono text-[10px] tracking-[0.2em] opacity-60">
  Preview · {palette.name}
  </div>
- <div className="mt-auto">
+ <div className="flex flex-1 flex-col justify-center">
  <div
  style={{ fontFamily: fonts.heading, lineHeight: 0.92, letterSpacing: '-0.05em' }}
  className="text-5xl xl:text-7xl"
