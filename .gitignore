@@ -37,5 +37,7 @@ test-results/
 # build outputs
 *.tsbuildinfo
 
-# hackathon journal (private notes)
+# hackathon journal + submission notes + deck (private)
 HACKATHON_DAILY.txt
+MVP_SUBMISSION.txt
+Marquee-Pitch.pptx
