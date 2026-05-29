@@ -3,6 +3,7 @@ import { useState, useTransition } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import type { Route } from 'next';
 import { getSupabaseBrowser } from '@/lib/supabase/client';
+import { GoogleButton } from '@/components/auth/google-button';
 
 export function LoginForm() {
   const router = useRouter();
@@ -29,7 +30,14 @@ export function LoginForm() {
   }
 
   return (
-    <form onSubmit={onSubmit} className="mt-8 space-y-4">
+    <div className="mt-8 space-y-4">
+      <GoogleButton next={next} />
+      <div className="flex items-center gap-3 py-1">
+        <span className="h-px flex-1 bg-[var(--color-border)]" />
+        <span className="text-xs text-[var(--color-ink-3)]">or</span>
+        <span className="h-px flex-1 bg-[var(--color-border)]" />
+      </div>
+      <form onSubmit={onSubmit} className="space-y-4">
       <Field label="Email" id="email">
         <input
           id="email"
@@ -82,7 +90,8 @@ export function LoginForm() {
           border-color: var(--color-ink);
         }
       `}</style>
-    </form>
+      </form>
+    </div>
   );
 }
 
