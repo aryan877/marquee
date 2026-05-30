@@ -2,6 +2,7 @@
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { cn } from '@/lib/cn';
+import { AiFillButton } from '@/components/app/ai-fill-button';
 import { PLATFORM_META, isLiveSocialPlatform } from '@/components/marquee/platform-icons';
 import { LIVE_SOCIAL_PLATFORMS } from '@marquee/shared/schemas';
 import type { Database } from '@marquee/db';
@@ -31,6 +32,7 @@ export function GenerateForm({ brands }: { brands: Brand[] }) {
  const [picked, setPicked] = useState<Set<SocialPlatform>>(new Set([LIVE_SOCIAL_PLATFORMS[0]]));
  const [error, setError] = useState<string | null>(null);
  const [pending, start] = useTransition();
+ const activeBrand = brands.find((b) => b.id === brandId) ?? null;
 
  function toggle(p: SocialPlatform) {
  if (!isLiveSocialPlatform(p)) return;
@@ -124,15 +126,39 @@ export function GenerateForm({ brands }: { brands: Brand[] }) {
  </section>
 
  <section>
- <label className="block">
- <span className="font-mono text-xs tracking-[0.2em] text-[var(--color-ink-3)]">Topic (optional)</span>
+ <div className="flex items-center justify-between gap-3">
+ <label htmlFor="generation-topic" className="font-mono text-xs tracking-[0.2em] text-[var(--color-ink-3)]">
+ Topic (optional)
+ </label>
+ <AiFillButton
+ label="Suggest"
+ disabled={!activeBrand}
+ request={{
+ form: 'generation-topic',
+ contentType: type,
+ topic,
+ brand: activeBrand ? {
+ name: activeBrand.name,
+ handle: activeBrand.handle,
+ description: activeBrand.description,
+ industry: activeBrand.industry,
+ target_audience: activeBrand.target_audience,
+ } : null,
+ }}
+ onApply={(suggestion) => {
+ if (typeof suggestion.topic === 'string' && suggestion.topic.trim()) {
+ setTopic(suggestion.topic.trim());
+ }
+ }}
+ />
+ </div>
  <input
+ id="generation-topic"
  value={topic}
  onChange={(e) => setTopic(e.target.value)}
  placeholder="e.g. how to survive a 9-to-5, explained by cats"
  className="mt-2 w-full rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-3 text-base text-[var(--color-ink)] focus:border-[var(--color-ink)] focus:outline-none"
  />
- </label>
  </section>
 
  <section>

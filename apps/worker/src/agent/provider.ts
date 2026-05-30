@@ -4,9 +4,10 @@ import OpenAI from 'openai';
 import type { AppConfig } from '../config.js';
 
 export const makeOpenRouterProvider = (cfg: AppConfig) => {
-  if (!cfg.openrouterApiKey) return null;
+  const apiKey = cfg.openrouterApiKey ? Redacted.value(cfg.openrouterApiKey).trim() : '';
+  if (!apiKey) return null;
   const client = new OpenAI({
-    apiKey: Redacted.value(cfg.openrouterApiKey),
+    apiKey,
     baseURL: 'https://openrouter.ai/api/v1',
     defaultHeaders: {
       'HTTP-Referer': cfg.openrouterSiteUrl,

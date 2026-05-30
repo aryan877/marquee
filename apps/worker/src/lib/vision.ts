@@ -40,10 +40,11 @@ export class Vision extends Effect.Service<Vision>()('Vision', {
     const cfg = yield* AppConfig;
     const llm = yield* Llm;
     const budget = yield* AgentBudget;
+    const apiKey = cfg.openrouterApiKey ? Redacted.value(cfg.openrouterApiKey).trim() : '';
 
-    const client = cfg.openrouterApiKey
+    const client = apiKey
       ? new OpenAI({
-          apiKey: Redacted.value(cfg.openrouterApiKey),
+          apiKey,
           baseURL: 'https://openrouter.ai/api/v1',
           defaultHeaders: {
             'HTTP-Referer': cfg.openrouterSiteUrl,

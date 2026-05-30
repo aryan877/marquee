@@ -19,7 +19,7 @@ export class LlmError extends Error {
 export class Llm extends Effect.Service<Llm>()('Llm', {
   effect: Effect.gen(function* () {
     const cfg = yield* AppConfig;
-    const apiKey = cfg.openrouterApiKey ? Redacted.value(cfg.openrouterApiKey) : null;
+    const apiKey = cfg.openrouterApiKey ? Redacted.value(cfg.openrouterApiKey).trim() : '';
 
     const client = apiKey
       ? new OpenAI({

@@ -29,7 +29,7 @@ export class FalImage extends Effect.Service<FalImage>()('FalImage', {
   effect: Effect.gen(function* () {
     const cfg = yield* AppConfig;
     const budget = yield* AgentBudget;
-    const key = cfg.falKey ? String(Redacted.value(cfg.falKey)) : null;
+    const key = cfg.falKey ? Redacted.value(cfg.falKey).trim() : '';
     if (key) fal.config({ credentials: key });
 
     const generate = (args: {
@@ -76,7 +76,7 @@ export class FalImage extends Effect.Service<FalImage>()('FalImage', {
         } satisfies FalImageResult;
       });
 
-    return { isReady: key !== null, generate } as const;
+    return { isReady: key.length > 0, generate } as const;
   }),
   dependencies: [AppConfig.Default, AgentBudget.Default],
 }) {}

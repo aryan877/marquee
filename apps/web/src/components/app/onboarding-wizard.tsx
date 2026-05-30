@@ -2,7 +2,22 @@
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { PALETTE_PRESETS, VOICE_PRESETS, FONT_PAIRS } from '@marquee/shared/palettes';
+import {
+ PALETTE_PRESETS,
+ VOICE_PRESETS,
+ FONT_PAIRS,
+ VOICE_IDS,
+ PALETTE_IDS,
+ FONT_IDS,
+ DEFAULT_BRAND_STYLE,
+ paletteById,
+ voiceById,
+ fontsById,
+ type VoiceId,
+ type PaletteId,
+ type FontId,
+} from '@marquee/shared/palettes';
+import { AiFillButton } from '@/components/app/ai-fill-button';
 import { cn } from '@/lib/cn';
 
 interface Draft {
@@ -11,9 +26,9 @@ interface Draft {
  description: string;
  industry: string;
  targetAudience: string;
- voiceId: string;
- paletteId: string;
- fontsId: string;
+ voiceId: VoiceId;
+ paletteId: PaletteId;
+ fontsId: FontId;
 }
 
 const EMPTY: Draft = {
@@ -22,12 +37,15 @@ const EMPTY: Draft = {
  description: '',
  industry: '',
  targetAudience: '',
- voiceId: 'witty',
- paletteId: 'lavender',
- fontsId: 'helvetica-now',
+ voiceId: DEFAULT_BRAND_STYLE.voiceId,
+ paletteId: DEFAULT_BRAND_STYLE.paletteId,
+ fontsId: DEFAULT_BRAND_STYLE.fontsId,
 };
 
 const STEPS = ['Brand', 'Voice', 'Look', 'Review'] as const;
+const VOICE_ID_SET = new Set<VoiceId>(VOICE_IDS);
+const PALETTE_ID_SET = new Set<PaletteId>(PALETTE_IDS);
+const FONT_ID_SET = new Set<FontId>(FONT_IDS);
 
 export function OnboardingWizard() {
  const router = useRouter();
@@ -36,9 +54,9 @@ export function OnboardingWizard() {
  const [error, setError] = useState<string | null>(null);
  const [pending, start] = useTransition();
 
- const palette = PALETTE_PRESETS.find((p) => p.id === draft.paletteId)!;
- const voice = VOICE_PRESETS.find((v) => v.id === draft.voiceId)!;
- const fonts = FONT_PAIRS.find((f) => f.id === draft.fontsId)!;
+ const palette = paletteById(draft.paletteId);
+ const voice = voiceById(draft.voiceId);
+ const fonts = fontsById(draft.fontsId);
 
  function next() { setStep((s) => Math.min(s + 1, STEPS.length - 1)); }
  function back() { setStep((s) => Math.max(s - 1, 0)); }
@@ -168,6 +186,13 @@ function Stepper({ step }: { step: number }) {
 function BrandStep({ draft, setDraft }: { draft: Draft; setDraft: (d: Draft) => void }) {
  return (
  <div className="grid max-w-2xl gap-4 sm:grid-cols-2">
+ <div className="flex justify-end sm:col-span-2">
+ <AiFillButton
+ label="AI fill"
+ request={{ form: 'brand-onboarding', draft }}
+ onApply={(suggestion) => setDraft(applyBrandSuggestion(draft, suggestion))}
+ />
+ </div>
  <Field label="Brand name" required>
  <input
  value={draft.name}
@@ -212,6 +237,28 @@ function BrandStep({ draft, setDraft }: { draft: Draft; setDraft: (d: Draft) => 
  <FieldStyle />
  </div>
  );
+}
+
+function applyBrandSuggestion(current: Draft, suggestion: Record<string, unknown>): Draft {
+ return {
+ ...current,
+ name:           textSuggestion(suggestion.name, current.name),
+ handle:         textSuggestion(suggestion.handle, current.handle),
+ industry:       textSuggestion(suggestion.industry, current.industry),
+ targetAudience: textSuggestion(suggestion.targetAudience, current.targetAudience),
+ description:    textSuggestion(suggestion.description, current.description),
+ voiceId:        presetSuggestion(suggestion.voiceId, VOICE_ID_SET, current.voiceId),
+ paletteId:      presetSuggestion(suggestion.paletteId, PALETTE_ID_SET, current.paletteId),
+ fontsId:        presetSuggestion(suggestion.fontsId, FONT_ID_SET, current.fontsId),
+ };
+}
+
+function textSuggestion(value: unknown, fallback: string) {
+ return typeof value === 'string' && value.trim() ? value.trim() : fallback;
+}
+
+function presetSuggestion<T extends string>(value: unknown, allowed: ReadonlySet<T>, fallback: T): T {
+ return typeof value === 'string' && allowed.has(value as T) ? value as T : fallback;
 }
 
 function VoiceStep({ draft, setDraft }: { draft: Draft; setDraft: (d: Draft) => void }) {

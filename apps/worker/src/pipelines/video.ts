@@ -84,28 +84,31 @@ export const runVideoPipeline = (ctx: PipelineContext) =>
       });
 
       const clipPath = join(cfg.outputsDir, `${ctx.job.id}/clips/clip-${i + 1}.mp4`);
+      const clipKey = `${ctx.job.id}/clips/clip-${i + 1}.mp4`;
       yield* ff.makeClipFromStillAndAudio({
         imagePath: cardSaved.path, audioPath: ttsSaved.path,
         outPath: clipPath, durationSec,
       });
-      const clipUrl = `${cfg.workerHttpUrl}/outputs/${ctx.job.id}/clips/clip-${i + 1}.mp4`;
+      const clipSaved = yield* storage.saveFile(clipKey, clipPath, 'video/mp4');
       yield* emit(ProgressStep.RenderFrame, `Clip ${i + 1}/${script.lines.length}`, 0.45 + ((i + 1) / script.lines.length) * 0.4, {
-        frame: i + 1, total: script.lines.length, thumbnail_url: cardSaved.url, fps: 30, clip_url: clipUrl,
+        frame: i + 1, total: script.lines.length, thumbnail_url: cardSaved.url, fps: 30, clip_url: clipSaved.url,
       });
       scenes.push({ clipPath, cardUrl: cardSaved.url, ttsUrl: ttsSaved.url, cat });
     }
 
     yield* emit(ProgressStep.RenderStart, 'Stitching final cut', 0.88);
-    const finalPath = join(cfg.outputsDir, `${ctx.job.id}/final.mp4`);
+    const finalKey = `${ctx.job.id}/final.mp4`;
+    const finalPath = join(cfg.outputsDir, finalKey);
     yield* ff.concatClips({ clipPaths: scenes.map((s) => s.clipPath), outPath: finalPath });
-    const finalUrl = `${cfg.workerHttpUrl}/outputs/${ctx.job.id}/final.mp4`;
+    const finalSaved = yield* storage.saveFile(finalKey, finalPath, 'video/mp4');
+    const finalUrl = finalSaved.url;
     const thumbUrl = scenes[0]?.cardUrl ?? null;
 
     yield* Effect.tryPromise(() =>
       sb.client.rpc('set_job_output', {
         p_job_id:        ctx.job.id,
         p_output_url:    finalUrl,
-        p_output_key:    `${ctx.job.id}/final.mp4`,
+        p_output_key:    finalSaved.key,
         p_thumbnail_url: thumbUrl ?? finalUrl,
       }),
     );

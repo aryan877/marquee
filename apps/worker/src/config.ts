@@ -24,6 +24,11 @@ export class AppConfig extends Effect.Service<AppConfig>()('AppConfig', {
     const webBaseUrl        = yield* Config.string('NEXT_PUBLIC_APP_URL').pipe(Config.withDefault('http://localhost:3000'));
     const workerHttpUrl     = yield* Config.string('WORKER_HTTP_URL').pipe(Config.withDefault('http://localhost:4001'));
     const outputsDir        = yield* Config.string('OUTPUTS_DIR').pipe(Config.withDefault('/tmp/marquee-outputs'));
+    const r2AccountId       = yield* Config.string('R2_ACCOUNT_ID').pipe(Config.withDefault(''));
+    const r2AccessKeyId     = yield* Config.redacted('R2_ACCESS_KEY_ID').pipe(Config.withDefault(undefined));
+    const r2SecretAccessKey = yield* Config.redacted('R2_SECRET_ACCESS_KEY').pipe(Config.withDefault(undefined));
+    const r2Bucket          = yield* Config.string('R2_BUCKET').pipe(Config.withDefault(''));
+    const r2PublicUrl       = yield* Config.string('R2_PUBLIC_URL').pipe(Config.withDefault(''));
     return {
       supabaseUrl, supabaseServiceKey, jwtSecret,
       wsPort, wsHost,
@@ -34,6 +39,7 @@ export class AppConfig extends Effect.Service<AppConfig>()('AppConfig', {
       agentMode, agentMaxIterations, agentMaxToolCalls,
       agentMaxJobSeconds, agentDailyUsdCap, agentJobUsdCap,
       webBaseUrl, workerHttpUrl, outputsDir,
+      r2AccountId, r2AccessKeyId, r2SecretAccessKey, r2Bucket, r2PublicUrl,
     } as const;
   }),
 }) {}

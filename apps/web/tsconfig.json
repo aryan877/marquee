@@ -7,7 +7,6 @@
     "jsx": "preserve",
     "incremental": true,
     "plugins": [{ "name": "next" }],
-    "baseUrl": ".",
     "paths": {
       "@/*": ["./src/*"],
       "@marquee/db": ["../../packages/db/src"],

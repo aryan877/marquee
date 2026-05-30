@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import { DEFAULT_BRAND_STYLE, fontsById, paletteById, voiceById } from '@marquee/shared/palettes';
 import { config } from 'dotenv';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -11,6 +12,10 @@ const sb = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!,
   { auth: { persistSession: false, autoRefreshToken: false } },
 );
+
+const voice = voiceById(DEFAULT_BRAND_STYLE.voiceId);
+const palette = paletteById(DEFAULT_BRAND_STYLE.paletteId);
+const fonts = fontsById(DEFAULT_BRAND_STYLE.fontsId);
 
 async function main() {
   const email = process.argv[2] ?? `dev+${Date.now()}@marquee.app`;
@@ -32,9 +37,9 @@ async function main() {
     p_description: 'Specialty coffee roastery for the perpetually online.',
     p_industry:   'Coffee',
     p_target_audience: 'Caffeine-dependent founders aged 24-40',
-    p_voice:      { tone: 'witty + sharp', sample_lines: ['Numbers don\'t lie. Bad design does.'] } as never,
-    p_palette:    { primary: '#1A1A1F', secondary: '#4D4D51', accent: '#C9C2E5', bg: '#E8E6F0', fg: '#0A0A0F' } as never,
-    p_fonts:      { heading: 'Helvetica Now Display', body: 'Inter' } as never,
+    p_voice:      { tone: voice.label, sample_lines: [voice.sample] } as never,
+    p_palette:    palette.colors as never,
+    p_fonts:      { heading: fonts.heading, body: fonts.body } as never,
     p_guidelines: { do: ['be direct'], dont: ['use AI slop words'] } as never,
   });
   if (brandErr) throw brandErr;

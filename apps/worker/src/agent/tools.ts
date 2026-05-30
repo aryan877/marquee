@@ -226,34 +226,37 @@ export const makeContentAgentTools = (state: ContentAgentState) =>
               scene_index: i,
             }) as Effect.Effect<void, never, never>;
             const clipPath = join(cfg.outputsDir, `${state.ctx.job.id}/agent/clip-${iteration}-${i + 1}.mp4`);
+            const clipKey = `${state.ctx.job.id}/agent/clip-${iteration}-${i + 1}.mp4`;
             yield* ff.makeClipFromStillAndAudio({ imagePath: cardSaved.path, audioPath: ttsSaved.path, outPath: clipPath, durationSec });
+            const clipSaved = yield* storage.saveFile(clipKey, clipPath, 'video/mp4');
             clipPaths.push(clipPath);
             yield* state.emit(ProgressStep.RenderFrame, `Clip ${i + 1}/${lines.length}`, 0.45 + ((i + 1) / lines.length) * 0.35, {
               frame: i + 1,
               total: lines.length,
               thumbnail_url: cardSaved.url,
               fps: 30,
-              clip_url: `${cfg.workerHttpUrl}/outputs/${state.ctx.job.id}/agent/clip-${iteration}-${i + 1}.mp4`,
+              clip_url: clipSaved.url,
             }) as Effect.Effect<void, never, never>;
           }
-          const finalPath = join(cfg.outputsDir, `${state.ctx.job.id}/agent/final-${iteration}.mp4`);
+          const finalKey = `${state.ctx.job.id}/agent/final-${iteration}.mp4`;
+          const finalPath = join(cfg.outputsDir, finalKey);
           yield* state.emit(ProgressStep.RenderStart, 'Stitching draft cut', 0.88) as Effect.Effect<void, never, never>;
           yield* ff.concatClips({ clipPaths, outPath: finalPath });
+          const finalSaved = yield* storage.saveFile(finalKey, finalPath, 'video/mp4');
           const duration = yield* ff.probeDurationSeconds(finalPath).pipe(Effect.catchAll(() => Effect.succeed(null)));
-          const url = `${cfg.workerHttpUrl}/outputs/${state.ctx.job.id}/agent/final-${iteration}.mp4`;
           const artifact = yield* createArtifact({
             kind: 'video',
             role: 'draft',
             iteration,
-            url,
-            key: `${state.ctx.job.id}/agent/final-${iteration}.mp4`,
+            url: finalSaved.url,
+            key: finalSaved.key,
             mimeType: 'video/mp4',
             width: 1080,
             height: 1920,
             durationS: duration,
             metadata: { thumbnail_url: thumbUrl, lines, caption: input.caption ?? null, hashtags: input.hashtags ?? [] },
           });
-          yield* state.emit(ProgressStep.RenderDone, 'Draft cut ready', 0.94, { url, thumbnail_url: thumbUrl }) as Effect.Effect<void, never, never>;
+          yield* state.emit(ProgressStep.RenderDone, 'Draft cut ready', 0.94, { url: finalSaved.url, thumbnail_url: thumbUrl }) as Effect.Effect<void, never, never>;
           return artifact;
         }),
       );
@@ -281,12 +284,12 @@ export const makeContentAgentTools = (state: ContentAgentState) =>
             const frameKey = `${state.ctx.job.id}/agent/review-frame-${artifact.iteration}.jpg`;
             const framePath = join(cfg.outputsDir, frameKey);
             yield* ff.extractFrame({ videoPath: join(cfg.outputsDir, artifact.key), outPath: framePath, atSeconds: Math.max(1, (artifact.durationS ?? 6) / 2) });
-            const frameUrl = `${cfg.workerHttpUrl}/outputs/${frameKey}`;
+            const frameSaved = yield* storage.saveFile(frameKey, framePath, 'image/jpeg');
             yield* createArtifact({
               kind: 'frame',
               role: 'intermediate',
               iteration: input.iteration ?? artifact.iteration,
-              url: frameUrl,
+              url: frameSaved.url,
               key: frameKey,
               mimeType: 'image/jpeg',
               width: 1080,

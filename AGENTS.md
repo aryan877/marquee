@@ -2,6 +2,8 @@
 
 Built at an open-air hackathon (top 1000 of 10000). Generates daily posters + cat-meme TikTok-style explainer videos for a brand, streams every intermediate artifact to a live Studio UI over raw WebSockets, posts to social platforms. Demo win condition is the live Studio paint.
 
+VPS deploy target: SSH alias `hackathon-server`, repo `/opt/marquee`, worker service `marquee-worker.service`.
+
 ## Stack
 
 | Layer | Tech |
@@ -96,6 +98,9 @@ type ContentType = Database['public']['Enums']['ContentType'];
 
 Server: `getSupabaseServer()` for user-scoped reads, `getSupabaseAdmin()` (service role) for mutations.
 Browser: `getSupabaseBrowser()`. Pass `<Database>` generic — wiring already does this.
+
+### Brand style presets
+Brand palettes, voice presets, font pairs, their IDs, Zod ID schemas, default style, and lookup helpers live in `packages/shared/src/palettes.ts`. UI, API routes, worker scripts, and render paths must import from there instead of hard-coding preset IDs, colors, voice labels, or font names.
 
 ### `progress_events.payload` (JSONB) is the protocol
 Worker emits typed payloads per step group. The Studio reads them by step prefix:
@@ -193,6 +198,7 @@ Required:
 
 For features that need keys (works without — fall back paths exist):
 - `OPENROUTER_API_KEY`, `OPENROUTER_MODEL` — agent reasoning + vision
+- `OPENROUTER_FORM_MODEL` — web form-fill helper (`deepseek/deepseek-v4-flash` by default)
 - `FAL_KEY`, `FAL_IMAGE_MODEL` — Fal AI image assets (`openai/gpt-image-2` by default)
 - `AGENT_DAILY_USD_CAP`, `AGENT_JOB_USD_CAP` — local budget guardrails
 - `DODO_API_KEY`, `DODO_WEBHOOK_SECRET`, `DODO_PRODUCT_ID_FOUNDER` — checkout
