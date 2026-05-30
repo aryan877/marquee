@@ -25,12 +25,12 @@ export function DiscordConnect({ brandId }: { brandId: string }) {
   }
 
   return (
-    <div className="mt-4 grid gap-3 sm:grid-cols-[1fr_auto]">
+    <div className="mt-4 grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto]">
       <input
         value={url}
         onChange={(e) => setUrl(e.target.value)}
         placeholder="https://discord.com/api/webhooks/…"
-        className="rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm"
+        className="min-w-0 rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm"
       />
       <button
         onClick={connect}

@@ -2,7 +2,7 @@ import Link from 'next/link';
 
 export function FreeLaunchBanner() {
   return (
-    <div className="border-b border-[var(--color-border)] bg-[var(--color-ink)] px-6 py-2.5 text-[var(--color-paper)] md:px-8">
+    <div className="sticky top-14 z-30 border-b border-[var(--color-border)] bg-[var(--color-ink)] px-6 py-2.5 text-[var(--color-paper)] md:top-0 md:px-8">
       <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 text-sm">
         <p className="flex items-center gap-3">
           <span

@@ -37,14 +37,14 @@ export function TwitterConnect({ brandId }: { brandId: string }) {
 
   return (
     <div className="mt-4 space-y-3">
-      <div className="rounded-[var(--radius-sm)] border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
+      <div className="rounded-[var(--radius-sm)] border border-[oklch(55%_0.12_75)] bg-[oklch(88%_0.08_82)] px-3 py-2 text-xs font-medium text-[oklch(32%_0.08_70)]">
         Cost warning: X switched to pay-per-use Feb 2026. ~$0.015 per text post, ~$0.20 per post containing a link. A test run with 5 posts = $1+ if any include URLs.
       </div>
       <div className="grid gap-3 sm:grid-cols-2">
-        <input value={appKey} onChange={(e) => setAppKey(e.target.value)} placeholder="API key" className="rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm" />
-        <input type="password" value={appSecret} onChange={(e) => setAppSecret(e.target.value)} placeholder="API key secret" className="rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm" />
-        <input value={accessToken} onChange={(e) => setAccessToken(e.target.value)} placeholder="Access token" className="rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm" />
-        <input type="password" value={accessSecret} onChange={(e) => setAccessSecret(e.target.value)} placeholder="Access token secret" className="rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm" />
+        <input value={appKey} onChange={(e) => setAppKey(e.target.value)} placeholder="API key" className="min-w-0 rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm" />
+        <input type="password" value={appSecret} onChange={(e) => setAppSecret(e.target.value)} placeholder="API key secret" className="min-w-0 rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm" />
+        <input value={accessToken} onChange={(e) => setAccessToken(e.target.value)} placeholder="Access token" className="min-w-0 rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm" />
+        <input type="password" value={accessSecret} onChange={(e) => setAccessSecret(e.target.value)} placeholder="Access token secret" className="min-w-0 rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm" />
       </div>
       <button
         onClick={connect}

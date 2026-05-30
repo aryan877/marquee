@@ -24,8 +24,8 @@ export function AppShell({
  const [menuOpen, setMenuOpen] = useState(false);
 
  return (
- <div className="grid min-h-screen md:grid-cols-[240px_1fr]">
- <aside className="hidden border-r border-[var(--color-border)] bg-[var(--color-paper)] md:flex md:flex-col">
+ <div className="min-h-screen overflow-x-hidden">
+ <aside className="fixed inset-y-0 left-0 z-40 hidden w-60 border-r border-[var(--color-border)] bg-[var(--color-paper)] md:flex md:flex-col">
  <div className="flex h-14 items-center gap-2 border-b border-[var(--color-border)] px-5">
  <Link href="/app" className="font-display text-xl tracking-[-0.06em]">
  marquee
@@ -70,7 +70,7 @@ export function AppShell({
  </button>
  </header>
 
- <main className="flex min-h-0 min-w-0 flex-col">
+ <main className="flex min-h-screen min-w-0 flex-col md:ml-60">
  {menuOpen && (
  <nav className="border-b border-[var(--color-border)] bg-[var(--color-paper-2)] p-3 md:hidden">
  <ul className="grid grid-cols-2 gap-2">
