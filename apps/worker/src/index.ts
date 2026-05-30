@@ -8,7 +8,6 @@ import { SupabaseLive } from './lib/supabase.js';
 import { LlmLive } from './lib/llm.js';
 import { RendererLive } from './lib/playwright-renderer.js';
 import { StorageLive } from './lib/storage.js';
-import { CatsLive } from './lib/cats.js';
 import { TtsLive } from './lib/tts.js';
 import { FfmpegLive } from './lib/ffmpeg.js';
 import { AgentBudgetLive } from './lib/agent-budget.js';
@@ -23,7 +22,6 @@ const Infrastructure = Layer.mergeAll(
   LlmLive,
   RendererLive,
   StorageLive,
-  CatsLive,
   TtsLive,
   FfmpegLive,
   AgentBudgetLive,

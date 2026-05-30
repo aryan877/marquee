@@ -15,7 +15,7 @@ VPS deploy target: SSH alias `hackathon-server`, repo `/opt/marquee`, worker ser
 | DB | Cloud Supabase `syrkuqywxczllfdsvmgp` (Prisma DDL + Supabase migrations for RLS/RPCs) |
 | Queue | PGMQ + priority dequeue |
 | Realtime | **Raw WS** from worker to browser (NOT Supabase Realtime) |
-| LLM | OpenRouter (single `OPENROUTER_MODEL`, default `xiaomi/mimo-v2.5`) — deterministic tool fallback if no key |
+| LLM | OpenRouter (single `OPENROUTER_MODEL`, default `xiaomi/mimo-v2.5`) |
 | TTS | `msedge-tts` (pure Node, no Python) |
 | Video | ffmpeg + Playwright stills (NOT Remotion) |
 | Posters | Fal AI `openai/gpt-image-2` assets + Playwright screenshots Next.js `/render/poster/[id]` route |
@@ -30,7 +30,7 @@ marquee/
 ├── apps/
 │   ├── web/                # Next.js — landing, app, /render, /api
 │   └── worker/             # Effect TS — WS gateway + queue consumer + pipelines
-│       ├── assets/cats/    # manifest.json (8 emoji cats v1; real green-screens slot in here)
+│       ├── assets/cats/    # Imgflip cat asset catalog for video jobs
 │       └── src/
 │           ├── config.ts        # Effect Config service
 │           ├── ws/              # WS gateway: server.ts, job-stream.ts, auth.ts, protocol.ts
@@ -166,7 +166,7 @@ Prod: swap `Storage.saveBytes` to write to R2; URL becomes `${R2_PUBLIC_URL}/<ke
 
 OpenRouter (OpenAI-compatible HTTP API). One model does all agent reasoning and vision review. Default `OPENROUTER_MODEL=xiaomi/mimo-v2.5`; do not split reasoning and vision models. `apps/worker/src/lib/llm.ts` still provides simple completion helpers; the server-side agent uses `@openai/agents` via `apps/worker/src/agent/provider.ts`.
 
-No OpenRouter key? The content agent uses a deterministic local fallback that still calls the same render/review/finalize tools and produces output.
+No OpenRouter key means agent jobs fail.
 
 ## Auth tokens for WS
 
@@ -241,7 +241,7 @@ curl -X POST http://localhost:4002/emit/<job_id> -d '{"step":"script:line","mess
 
 ## What's NOT built yet
 
-- **Real green-screen cat MP4s** — manifest is emoji-only v1. Curate ~50 clips from greenscreenmemes.com or Pixabay, drop in `apps/worker/assets/cats/clips/`, extend manifest, add ffmpeg chroma-key step.
+- **Green-screen cat MP4s** — current catalog is real still images in `apps/worker/assets/cats/imgflip`. For motion clips, add curated MP4s under `apps/worker/assets/cats/clips/` and wire an ffmpeg chroma-key step.
 - **Whisper word-level captions** — video uses line-level timing from TTS duration. For per-word burned captions, add whisper.cpp call after each `tts.speak()` and emit `caption:align` with word timings; render captions in `/render/video/card/[id]`.
 - **R2 storage** — `Storage.saveBytes` writes local FS only. Add an R2 branch when `R2_*` env present.
 - **Autopilot auto-publish** — `sweep_autopilot` enqueues jobs from `campaigns.next_run_at`, but Founder Pass `auto_publish` branch in `/api/jobs/[id]/approve` (post automatically, skip REVIEW) isn't wired. Default = manual approval, as documented.

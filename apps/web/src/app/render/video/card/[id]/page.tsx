@@ -9,7 +9,7 @@ export default async function VideoCardRender({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ line?: string; emoji?: string; color?: string; index?: string; total?: string }>;
+  searchParams: Promise<{ line?: string; color?: string; index?: string; total?: string; image?: string }>;
 }) {
   const { id } = await params;
   const sp = await searchParams;
@@ -26,10 +26,11 @@ export default async function VideoCardRender({
   const fonts = readFonts(brand);
 
   const line  = sp.line ?? 'When the wifi goes out at the worst possible moment.';
-  const emoji = sp.emoji ?? '😼';
   const color = sp.color ?? palette.accent;
   const index = Number(sp.index ?? '1');
   const total = Number(sp.total ?? '5');
+  const image = sp.image?.startsWith('http') ? sp.image : null;
+  if (!image) throw new Error('image query param required');
 
   return (
     <main className="stage">
@@ -49,7 +50,7 @@ export default async function VideoCardRender({
 
       <section className="cat-wrap">
         <div className="cat-card" style={{ background: palette.bg, color: palette.fg }}>
-          <span className="emoji">{emoji}</span>
+          <img className="cat-image" src={image} alt="" />
         </div>
       </section>
 
@@ -92,9 +93,11 @@ export default async function VideoCardRender({
           display: flex; align-items: center; justify-content: center;
           box-shadow: 0 32px 80px -16px rgba(0,0,0,0.45);
         }
-        .emoji {
-          font-size: 480px; line-height: 1;
-          filter: drop-shadow(0 12px 12px rgba(0,0,0,0.25));
+        .cat-image {
+          width: 100%; height: 100%;
+          object-fit: cover;
+          border-radius: 48px;
+          filter: saturate(1.05) contrast(1.04);
         }
         .caption-wrap {
           position: absolute; bottom: 200px; left: 64px; right: 64px;

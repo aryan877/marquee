@@ -16,7 +16,7 @@ export class AppConfig extends Effect.Service<AppConfig>()('AppConfig', {
     const falKey            = yield* Config.redacted('FAL_KEY').pipe(Config.withDefault(undefined));
     const falImageModel     = yield* Config.string('FAL_IMAGE_MODEL').pipe(Config.withDefault('openai/gpt-image-2'));
     const agentMaxIterations = yield* Config.integer('AGENT_MAX_ITERATIONS').pipe(Config.withDefault(3));
-    const agentMaxToolCalls = yield* Config.integer('AGENT_MAX_TOOL_CALLS').pipe(Config.withDefault(16));
+    const agentMaxToolCalls = yield* Config.integer('AGENT_MAX_TOOL_CALLS').pipe(Config.withDefault(32));
     const agentMaxJobSeconds = yield* Config.integer('AGENT_MAX_JOB_SECONDS').pipe(Config.withDefault(240));
     const agentDailyUsdCap = yield* Config.number('AGENT_DAILY_USD_CAP').pipe(Config.withDefault(10));
     const agentJobUsdCap = yield* Config.number('AGENT_JOB_USD_CAP').pipe(Config.withDefault(0.75));

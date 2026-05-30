@@ -1,0 +1,187 @@
+{
+  "source": "https://imgflip.com/memesearch?q=cat",
+  "downloaded_at": "2026-05-30T23:16:26.066Z",
+  "usage_note": "Imgflip cat meme templates for internal prototyping. Verify rights/licensing before production/public redistribution.",
+  "items": [
+    {
+      "id": "business-cat",
+      "title": "Business Cat",
+      "file": "business-cat.jpg",
+      "source": "https://i.imgflip.com/1bh7.jpg",
+      "page": "https://imgflip.com/meme/Business-Cat",
+      "bytes": 18319,
+      "content_type": "image/jpeg"
+    },
+    {
+      "id": "cat-newspaper",
+      "title": "Cat newspaper",
+      "file": "cat-newspaper.jpg",
+      "source": "https://i.imgflip.com/bgsvd.jpg",
+      "page": "https://imgflip.com/meme/19259689/Cat-newspaper",
+      "bytes": 19011,
+      "content_type": "image/jpeg"
+    },
+    {
+      "id": "ceiling-cat",
+      "title": "Ceiling Cat",
+      "file": "ceiling-cat.jpg",
+      "source": "https://i.imgflip.com/22vtk.jpg",
+      "page": "https://imgflip.com/meme/Ceiling-Cat",
+      "bytes": 7546,
+      "content_type": "image/jpeg"
+    },
+    {
+      "id": "chemistry-cat",
+      "title": "Chemistry Cat",
+      "file": "chemistry-cat.jpg",
+      "source": "https://i.imgflip.com/1bif.jpg",
+      "page": "https://imgflip.com/meme/Chemistry-Cat",
+      "bytes": 40963,
+      "content_type": "image/jpeg"
+    },
+    {
+      "id": "cool-cat-stroll",
+      "title": "Cool Cat Stroll",
+      "file": "cool-cat-stroll.jpg",
+      "source": "https://i.imgflip.com/24uu.jpg",
+      "page": "https://imgflip.com/meme/Cool-Cat-Stroll",
+      "bytes": 21246,
+      "content_type": "image/jpeg"
+    },
+    {
+      "id": "crying-cat",
+      "title": "Crying cat",
+      "file": "crying-cat.jpg",
+      "source": "https://i.imgflip.com/p0a19.jpg",
+      "page": "https://imgflip.com/meme/42003405/Crying-cat",
+      "bytes": 21403,
+      "content_type": "image/jpeg"
+    },
+    {
+      "id": "crying-middle-finger-cat",
+      "title": "Crying Middle Finger Cat",
+      "file": "crying-middle-finger-cat.jpg",
+      "source": "local-user-upload",
+      "page": "local-user-upload",
+      "bytes": 10950,
+      "content_type": "image/jpeg"
+    },
+    {
+      "id": "cute-cat",
+      "title": "Cute Cat",
+      "file": "cute-cat.jpg",
+      "source": "https://i.imgflip.com/4xgqu.jpg",
+      "page": "https://imgflip.com/meme/Cute-Cat",
+      "bytes": 35071,
+      "content_type": "image/jpeg"
+    },
+    {
+      "id": "excited-screaming-kitten",
+      "title": "Excited Screaming Kitten",
+      "file": "excited-screaming-kitten.jpg",
+      "source": "local-user-upload",
+      "page": "local-user-upload",
+      "bytes": 14372,
+      "content_type": "image/jpeg"
+    },
+    {
+      "id": "grumpy-cat-birthday",
+      "title": "Grumpy Cat Birthday",
+      "file": "grumpy-cat-birthday.jpg",
+      "source": "https://i.imgflip.com/4oiso.jpg",
+      "page": "https://imgflip.com/meme/Grumpy-Cat-Birthday",
+      "bytes": 45687,
+      "content_type": "image/jpeg"
+    },
+    {
+      "id": "grumpy-cat",
+      "title": "Grumpy Cat",
+      "file": "grumpy-cat.jpg",
+      "source": "https://i.imgflip.com/8p0a.jpg",
+      "page": "https://imgflip.com/meme/Grumpy-Cat",
+      "bytes": 43375,
+      "content_type": "image/jpeg"
+    },
+    {
+      "id": "heavy-breathing-cat",
+      "title": "Heavy Breathing Cat",
+      "file": "heavy-breathing-cat.jpg",
+      "source": "https://i.imgflip.com/7rf5z.jpg",
+      "page": "https://imgflip.com/meme/Heavy-Breathing-Cat",
+      "bytes": 18204,
+      "content_type": "image/jpeg"
+    },
+    {
+      "id": "i-can-has-cheezburger-cat",
+      "title": "I can has cheezburger cat",
+      "file": "i-can-has-cheezburger-cat.jpg",
+      "source": "https://i.imgflip.com/jru7x.jpg",
+      "page": "https://imgflip.com/meme/33211581/I-can-has-cheezburger-cat",
+      "bytes": 24413,
+      "content_type": "image/jpeg"
+    },
+    {
+      "id": "i-should-buy-a-boat-cat",
+      "title": "I Should Buy A Boat Cat",
+      "file": "i-should-buy-a-boat-cat.jpg",
+      "source": "https://i.imgflip.com/tau4.jpg",
+      "page": "https://imgflip.com/meme/I-Should-Buy-A-Boat-Cat",
+      "bytes": 18840,
+      "content_type": "image/jpeg"
+    },
+    {
+      "id": "persian-cat-room-guardian",
+      "title": "Persian Cat Room Guardian",
+      "file": "persian-cat-room-guardian.jpg",
+      "source": "https://i.imgflip.com/zl7we.jpg",
+      "page": "https://imgflip.com/meme/Persian-Cat-Room-Guardian",
+      "bytes": 35663,
+      "content_type": "image/jpeg"
+    },
+    {
+      "id": "scared-cat",
+      "title": "Scared Cat",
+      "file": "scared-cat.jpg",
+      "source": "https://i.imgflip.com/2hgfw.jpg",
+      "page": "https://imgflip.com/meme/Scared-Cat",
+      "bytes": 28269,
+      "content_type": "image/jpeg"
+    },
+    {
+      "id": "shrek-cat",
+      "title": "Shrek Cat",
+      "file": "shrek-cat.jpg",
+      "source": "https://i.imgflip.com/3m5mp.jpg",
+      "page": "https://imgflip.com/meme/Shrek-Cat",
+      "bytes": 31437,
+      "content_type": "image/jpeg"
+    },
+    {
+      "id": "smiling-cat",
+      "title": "Smiling Cat",
+      "file": "smiling-cat.jpg",
+      "source": "https://i.imgflip.com/amuvy.jpg",
+      "page": "https://imgflip.com/meme/Smiling-Cat",
+      "bytes": 40446,
+      "content_type": "image/jpeg"
+    },
+    {
+      "id": "smudge-the-cat",
+      "title": "Smudge the cat",
+      "file": "smudge-the-cat.jpg",
+      "source": "https://i.imgflip.com/39binw.jpg",
+      "page": "https://imgflip.com/meme/197052476/Smudge-the-cat",
+      "bytes": 69959,
+      "content_type": "image/jpeg"
+    },
+    {
+      "id": "woman-yelling-at-cat",
+      "title": "Woman Yelling At Cat",
+      "file": "woman-yelling-at-cat.jpg",
+      "source": "https://i.imgflip.com/345v97.jpg",
+      "page": "https://imgflip.com/meme/Woman-Yelling-At-Cat",
+      "bytes": 32637,
+      "content_type": "image/jpeg"
+    }
+  ]
+}

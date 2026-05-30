@@ -2,36 +2,35 @@ import { Effect } from 'effect';
 import { ProgressStep } from '@marquee/shared/progress';
 import { tool, type Tool } from '@openai/agents';
 import { z } from 'zod';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import { AppConfig } from '../config.js';
 import { Renderer } from '../lib/playwright-renderer.js';
 import { Storage } from '../lib/storage.js';
 import { Supabase } from '../lib/supabase.js';
-import { Cats } from '../lib/cats.js';
 import { Tts } from '../lib/tts.js';
 import { Ffmpeg } from '../lib/ffmpeg.js';
 import { FalImage } from '../lib/fal-image.js';
 import { Vision } from '../lib/vision.js';
 import { AgentBudget } from '../lib/agent-budget.js';
 import type { ArtifactRecord, ContentAgentState } from './types.js';
+import {
+  ensureJobWorkspace,
+  listWorkspaceFiles,
+  readWorkspaceFile,
+  runWorkspaceCommand,
+  stageCatAsset,
+  writeWorkspaceFile,
+} from './workspace.js';
 
 const MAX_TEXT = 180;
 const LAYERS = ['background', 'wordmark', 'headline', 'accent', 'final'] as const;
-const SILENT_MP3 = Uint8Array.from(
-  Buffer.from(
-    '//uQxAAAAAAAAAAAAAAAAAAAAAAASW5mbwAAAA8AAAACAAACgAA' +
-    'A//////////////////////////////////////////////////' +
-    '//////////////////////////////////////////////////8' +
-    'AAAA8TEFNRTMuMTAwAc0AAAAAAAAAABSAJAJAQgAAgAAAAoBfXVO',
-    'base64',
-  ),
-);
 
 type RpcResult = { data: unknown; error: unknown };
 type Rpc = (fn: string, args?: Record<string, unknown>) => Promise<RpcResult>;
 
 const clip = (value: string, max = MAX_TEXT) => value.trim().slice(0, max);
 const safeJson = (value: unknown) => JSON.stringify(value);
+const toError = (err: unknown) => err instanceof Error ? err : new Error(String(err));
 
 export const makeContentAgentTools = (state: ContentAgentState) =>
   Effect.gen(function* () {
@@ -39,13 +38,14 @@ export const makeContentAgentTools = (state: ContentAgentState) =>
     const render = yield* Renderer;
     const storage = yield* Storage;
     const sb = yield* Supabase;
-    const cats = yield* Cats;
     const tts = yield* Tts;
     const ff = yield* Ffmpeg;
     const fal = yield* FalImage;
     const vision = yield* Vision;
     const budget = yield* AgentBudget;
     const rpc = sb.client.rpc.bind(sb.client) as unknown as Rpc;
+    const workspace = () => ensureJobWorkspace(state.ctx, cfg.outputsDir);
+    const fromPromise = <A>(tryer: () => Promise<A>) => Effect.tryPromise({ try: tryer, catch: toError });
 
     const createArtifact = (args: Omit<ArtifactRecord, 'id'>) =>
       Effect.gen(function* () {
@@ -177,8 +177,54 @@ export const makeContentAgentTools = (state: ContentAgentState) =>
         }),
       );
 
+    const listWorkspace = (input: { path?: string | null }) =>
+      withToolProgress('list_workspace_files', 0, { path: input.path ?? '.' },
+        fromPromise(async () => listWorkspaceFiles(await workspace(), input.path ?? '.')),
+      );
+
+    const readWorkspace = (input: { path: string; max_bytes?: number | null }) =>
+      withToolProgress('read_workspace_file', 0, { path: input.path },
+        fromPromise(async () => ({
+          path: input.path,
+          content: await readWorkspaceFile(await workspace(), input.path, input.max_bytes ?? 16000),
+        })),
+      );
+
+    const writeWorkspace = (input: { path: string; content: string }) =>
+      withToolProgress('write_workspace_file', 0, { path: input.path },
+        fromPromise(async () => writeWorkspaceFile(await workspace(), input.path, input.content)),
+      );
+
+    const listCatAssets = () =>
+      withToolProgress('list_cat_assets', 0, {},
+        fromPromise(async () => {
+          const ws = await workspace();
+          return {
+            count: ws.assets.length,
+            assets: ws.assets.map((asset) => ({
+              id: asset.id,
+              title: asset.title,
+              file: asset.file,
+              page: asset.page,
+              bytes: asset.bytes,
+              local_path: `assets/cats/${asset.file}`,
+            })),
+          };
+        }),
+      );
+
+    const stageCat = (input: { asset_id: string; target_name?: string | null }) =>
+      withToolProgress('stage_cat_asset', 0, { asset_id: input.asset_id },
+        fromPromise(async () => stageCatAsset(await workspace(), input.asset_id, cfg.workerHttpUrl, state.ctx.job.id, input.target_name)),
+      );
+
+    const runCommand = (input: { command: string; args?: string[] | null; timeout_ms?: number | null }) =>
+      withToolProgress('run_workspace_command', 0, { command: input.command, args: input.args ?? [] },
+        fromPromise(async () => runWorkspaceCommand(await workspace(), input.command, input.args ?? [], Math.min(input.timeout_ms ?? 8000, 15000))),
+      );
+
     const renderVideoDraft = (input: {
-      lines: { text: string; emotion?: string | null }[];
+      lines: { text: string; emotion?: string | null; asset_id: string }[];
       caption?: string | null;
       hashtags?: string[] | null;
       iteration?: number;
@@ -189,8 +235,10 @@ export const makeContentAgentTools = (state: ContentAgentState) =>
           const lines = input.lines.slice(0, 6).map((line) => ({
             text: clip(line.text, 96),
             emotion: (line.emotion ?? 'happy').toLowerCase(),
+            assetId: line.asset_id?.trim() || null,
           })).filter((line) => line.text.length > 0);
           if (lines.length < 3) return yield* Effect.fail(new Error('video needs at least three lines'));
+          if (lines.some((line) => !line.assetId)) return yield* Effect.fail(new Error('every video line needs a cat asset_id'));
           for (let i = 0; i < lines.length; i++) {
             const line = lines[i]!;
             yield* state.emit(ProgressStep.ScriptLine, `Step ${i + 1}: ${line.text}`, 0.12 + (i / lines.length) * 0.08, {
@@ -203,10 +251,18 @@ export const makeContentAgentTools = (state: ContentAgentState) =>
           let thumbUrl: string | null = null;
           for (let i = 0; i < lines.length; i++) {
             const line = lines[i]!;
-            const cat = cats.pickByEmotion(line.emotion);
-            const ttsBytes = yield* tts.speak(line.text).pipe(Effect.catchAll(() => Effect.succeed(new Uint8Array())));
-            const ttsSaved = yield* storage.saveBytes(`${state.ctx.job.id}/agent/audio-${iteration}-${i + 1}.mp3`, ttsBytes.length > 0 ? ttsBytes : SILENT_MP3);
-            const rawDuration = yield* ff.probeDurationSeconds(ttsSaved.path).pipe(Effect.catchAll(() => Effect.succeed(Math.max(2.8, line.text.length * 0.075))));
+            const staged = yield* fromPromise(async () => {
+              const ws = await workspace();
+              return await stageCatAsset(ws, line.assetId!, cfg.workerHttpUrl, state.ctx.job.id);
+            });
+            const stagedSaved = yield* storage.saveFile(
+              `${state.ctx.job.id}/agent/assets/${basename(staged.path)}`,
+              join(cfg.outputsDir, state.ctx.job.id, 'workspace', staged.path),
+              staged.asset.content_type,
+            );
+            const ttsBytes = yield* tts.speak(line.text);
+            const ttsSaved = yield* storage.saveBytes(`${state.ctx.job.id}/agent/audio-${iteration}-${i + 1}.mp3`, ttsBytes);
+            const rawDuration = yield* ff.probeDurationSeconds(ttsSaved.path);
             const durationSec = Math.max(2.5, Math.min(5, rawDuration));
             yield* state.emit(ProgressStep.TtsChunk, `Recorded line ${i + 1}`, null, {
               line_index: i,
@@ -214,15 +270,15 @@ export const makeContentAgentTools = (state: ContentAgentState) =>
               duration_s: durationSec,
               voice: tts.voice,
             }) as Effect.Effect<void, never, never>;
-            const cardUrl = buildCardRenderUrl(cfg.webBaseUrl, state.ctx.job.id, line.text, cat.emoji, cat.color, i + 1, lines.length);
+            const cardUrl = buildCardRenderUrl(cfg.webBaseUrl, state.ctx.job.id, line.text, i + 1, lines.length, stagedSaved.url);
             const png = yield* render.shot({ url: cardUrl, width: 1080, height: 1920, deviceScaleFactor: 1 });
             const cardSaved = yield* storage.saveBytes(`${state.ctx.job.id}/agent/card-${iteration}-${i + 1}.png`, png);
             thumbUrl ??= cardSaved.url;
-            yield* state.emit(ProgressStep.AssetFetch, `Picked ${cat.emotion} cat`, null, {
-              asset_id: cat.id,
-              emotion: cat.emotion,
-              url: cardSaved.url,
-              thumbnail_url: cardSaved.url,
+            yield* state.emit(ProgressStep.AssetFetch, `Picked ${staged.asset.title}`, null, {
+              asset_id: staged.asset.id,
+              emotion: line.emotion,
+              url: stagedSaved.url,
+              thumbnail_url: stagedSaved.url,
               scene_index: i,
             }) as Effect.Effect<void, never, never>;
             const clipPath = join(cfg.outputsDir, `${state.ctx.job.id}/agent/clip-${iteration}-${i + 1}.mp4`);
@@ -243,7 +299,7 @@ export const makeContentAgentTools = (state: ContentAgentState) =>
           yield* state.emit(ProgressStep.RenderStart, 'Stitching draft cut', 0.88) as Effect.Effect<void, never, never>;
           yield* ff.concatClips({ clipPaths, outPath: finalPath });
           const finalSaved = yield* storage.saveFile(finalKey, finalPath, 'video/mp4');
-          const duration = yield* ff.probeDurationSeconds(finalPath).pipe(Effect.catchAll(() => Effect.succeed(null)));
+          const duration = yield* ff.probeDurationSeconds(finalPath);
           const artifact = yield* createArtifact({
             kind: 'video',
             role: 'draft',
@@ -369,6 +425,55 @@ export const makeContentAgentTools = (state: ContentAgentState) =>
 
     return [
       tool({
+        name: 'list_workspace_files',
+        description: 'List files in the current job workspace. Use this before reading job briefs, staged assets, or generated notes.',
+        parameters: z.object({ path: z.string().max(240).nullable().optional() }),
+        execute: (input) => run(listWorkspace(input)).then(toModel),
+      }),
+      tool({
+        name: 'read_workspace_file',
+        description: 'Read a small text/json/md/html/css/svg file from the current job workspace.',
+        parameters: z.object({
+          path: z.string().min(1).max(240),
+          max_bytes: z.number().int().min(1).max(32000).nullable().optional(),
+        }),
+        execute: (input) => run(readWorkspace(input)).then(toModel),
+      }),
+      tool({
+        name: 'write_workspace_file',
+        description: 'Write a small text/json/md/html/css/svg note or spec inside the current job workspace.',
+        parameters: z.object({
+          path: z.string().min(1).max(240),
+          content: z.string().max(12000),
+        }),
+        execute: (input) => run(writeWorkspace(input)).then(toModel),
+      }),
+      tool({
+        name: 'list_cat_assets',
+        description: 'List available cat meme assets in the workspace. Use asset ids in render_video_draft lines when a visual cat reaction is useful.',
+        parameters: z.object({}),
+        execute: () => run(listCatAssets()).then(toModel),
+      }),
+      tool({
+        name: 'stage_cat_asset',
+        description: 'Copy a cat asset into selected-cats/ and return a public URL for render tools.',
+        parameters: z.object({
+          asset_id: z.string().min(1).max(120),
+          target_name: z.string().max(120).nullable().optional(),
+        }),
+        execute: (input) => run(stageCat(input)).then(toModel),
+      }),
+      tool({
+        name: 'run_workspace_command',
+        description: 'Run a safe allowlisted command inside the job workspace. No shell expansion. Allowed commands: ls, find, file, wc, du, ffprobe.',
+        parameters: z.object({
+          command: z.enum(['ls', 'find', 'file', 'wc', 'du', 'ffprobe']),
+          args: z.array(z.string().max(160)).max(16).nullable().optional(),
+          timeout_ms: z.number().int().min(1000).max(15000).nullable().optional(),
+        }),
+        execute: (input) => run(runCommand(input)).then(toModel),
+      }),
+      tool({
         name: 'render_poster_draft',
         description: 'Render a poster draft. Use for POSTER and CAROUSEL jobs before review/finalize.',
         parameters: z.object({
@@ -382,9 +487,13 @@ export const makeContentAgentTools = (state: ContentAgentState) =>
       }),
       tool({
         name: 'render_video_draft',
-        description: 'Render a 20-30 second vertical cat-meme explainer draft for VIDEO and REEL jobs.',
+        description: 'Render a 20-30 second vertical cat-meme explainer draft for VIDEO and REEL jobs. Every line must include an asset_id from list_cat_assets.',
         parameters: z.object({
-          lines: z.array(z.object({ text: z.string().min(1).max(110), emotion: z.string().max(40).nullable().optional() })).min(3).max(6),
+          lines: z.array(z.object({
+            text: z.string().min(1).max(110),
+            emotion: z.string().max(40).nullable().optional(),
+            asset_id: z.string().min(1).max(120),
+          })).min(3).max(6),
           caption: z.string().max(800).nullable().optional(),
           hashtags: z.array(z.string().max(40)).max(8).nullable().optional(),
           iteration: z.number().int().min(1).max(5).optional(),
@@ -437,12 +546,11 @@ const buildPosterRenderUrl = (
   return u.toString();
 };
 
-const buildCardRenderUrl = (base: string, jobId: string, line: string, emoji: string, color: string, index: number, total: number) => {
+const buildCardRenderUrl = (base: string, jobId: string, line: string, index: number, total: number, imageUrl: string) => {
   const u = new URL(`${base}/render/video/card/${jobId}`);
   u.searchParams.set('line', line);
-  u.searchParams.set('emoji', emoji);
-  u.searchParams.set('color', color);
   u.searchParams.set('index', String(index));
   u.searchParams.set('total', String(total));
+  u.searchParams.set('image', imageUrl);
   return u.toString();
 };

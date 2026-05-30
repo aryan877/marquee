@@ -19,8 +19,8 @@ const MIME: Record<string, string> = {
 
 const clean = (value: string | undefined) => value?.trim() ?? '';
 const publicKey = (key: string) => key.split('/').map(encodeURIComponent).join('/');
-const contentTypeFor = (key: string, fallback = 'application/octet-stream') =>
-  MIME[extname(key).toLowerCase()] ?? fallback;
+const contentTypeFor = (key: string, defaultType = 'application/octet-stream') =>
+  MIME[extname(key).toLowerCase()] ?? defaultType;
 
 export class Storage extends Effect.Service<Storage>()('Storage', {
   effect: Effect.gen(function* () {
