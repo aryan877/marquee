@@ -13,8 +13,10 @@
     "@aws-sdk/client-s3": "^3.1029.0",
     "@effect/platform": "^0.96.0",
     "@effect/platform-node": "^0.106.0",
+    "@fal-ai/client": "^1.10.1",
     "@marquee/db": "workspace:*",
     "@marquee/shared": "workspace:*",
+    "@openai/agents": "^0.11.6",
     "@supabase/supabase-js": "^2.103.0",
     "effect": "^3.21.0",
     "jsonwebtoken": "^9.0.2",
@@ -22,7 +24,8 @@
     "openai": "^6.39.0",
     "pg": "^8.20.0",
     "playwright": "^1.60.0",
-    "ws": "^8.21.0"
+    "ws": "^8.21.0",
+    "zod": "^4.0.0"
   },
   "devDependencies": {
     "@types/jsonwebtoken": "^9.0.6",

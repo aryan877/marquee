@@ -6,4 +6,5 @@ export type BrandCtx = Database['public']['Functions']['get_brand_for_job']['Ret
 export interface PipelineContext {
   job:   JobFull;
   brand: BrandCtx;
+  queue?: { msgId: number };
 }

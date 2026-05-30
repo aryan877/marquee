@@ -11,6 +11,9 @@ import { StorageLive } from './lib/storage.js';
 import { CatsLive } from './lib/cats.js';
 import { TtsLive } from './lib/tts.js';
 import { FfmpegLive } from './lib/ffmpeg.js';
+import { AgentBudgetLive } from './lib/agent-budget.js';
+import { FalImageLive } from './lib/fal-image.js';
+import { VisionLive } from './lib/vision.js';
 import { QueueConsumerLive } from './queue/consumer.js';
 
 const Infrastructure = Layer.mergeAll(
@@ -23,6 +26,9 @@ const Infrastructure = Layer.mergeAll(
   CatsLive,
   TtsLive,
   FfmpegLive,
+  AgentBudgetLive,
+  FalImageLive,
+  VisionLive,
 ).pipe(Layer.provide(ConfigFromEnv));
 
 const program = Effect.gen(function* () {

@@ -82,7 +82,21 @@ export class Ffmpeg extends Effect.Service<Ffmpeg>()('Ffmpeg', {
         }
       });
 
-    return { probeDurationSeconds, makeClipFromStillAndAudio, concatClips } as const;
+    const extractFrame = (args: { videoPath: string; outPath: string; atSeconds: number }) =>
+      Effect.gen(function* () {
+        yield* ensureDir(args.outPath);
+        const result = yield* Effect.tryPromise(() =>
+          run('ffmpeg', [
+            '-y', '-ss', String(Math.max(0, args.atSeconds).toFixed(3)),
+            '-i', args.videoPath, '-frames:v', '1', '-q:v', '2', args.outPath,
+          ]),
+        );
+        if (result.code !== 0) {
+          return yield* Effect.fail(new Error(`ffmpeg frame: ${result.stderr.slice(-500)}`));
+        }
+      });
+
+    return { probeDurationSeconds, makeClipFromStillAndAudio, concatClips, extractFrame } as const;
   }),
 }) {}
 

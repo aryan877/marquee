@@ -7,6 +7,11 @@ export type Json =
   | Json[]
 
 export type Database = {
+  // Allows to automatically instantiate createClient with right options
+  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
+  __InternalSupabase: {
+    PostgrestVersion: "14.5"
+  }
   public: {
     Tables: {
       _prisma_migrations: {
@@ -41,6 +46,53 @@ export type Database = {
           started_at?: string
         }
         Relationships: []
+      }
+      agent_usage_events: {
+        Row: {
+          created_at: string
+          estimated_cost_usd: number
+          id: number
+          input_tokens: number
+          job_id: string | null
+          metadata: Json
+          model: string
+          output_tokens: number
+          provider: string
+          purpose: string
+        }
+        Insert: {
+          created_at?: string
+          estimated_cost_usd?: number
+          id?: number
+          input_tokens?: number
+          job_id?: string | null
+          metadata?: Json
+          model: string
+          output_tokens?: number
+          provider: string
+          purpose: string
+        }
+        Update: {
+          created_at?: string
+          estimated_cost_usd?: number
+          id?: number
+          input_tokens?: number
+          job_id?: string | null
+          metadata?: Json
+          model?: string
+          output_tokens?: number
+          provider?: string
+          purpose?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "agent_usage_events_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "content_jobs"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       brands: {
         Row: {
@@ -156,6 +208,62 @@ export type Database = {
             columns: ["brand_id"]
             isOneToOne: false
             referencedRelation: "brands"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      content_job_artifacts: {
+        Row: {
+          created_at: string
+          duration_s: number | null
+          height: number | null
+          id: string
+          iteration: number
+          job_id: string
+          key: string | null
+          kind: string
+          metadata: Json
+          mime_type: string | null
+          role: string
+          url: string | null
+          width: number | null
+        }
+        Insert: {
+          created_at?: string
+          duration_s?: number | null
+          height?: number | null
+          id?: string
+          iteration?: number
+          job_id: string
+          key?: string | null
+          kind: string
+          metadata?: Json
+          mime_type?: string | null
+          role: string
+          url?: string | null
+          width?: number | null
+        }
+        Update: {
+          created_at?: string
+          duration_s?: number | null
+          height?: number | null
+          id?: string
+          iteration?: number
+          job_id?: string
+          key?: string | null
+          kind?: string
+          metadata?: Json
+          mime_type?: string | null
+          role?: string
+          url?: string | null
+          width?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "content_job_artifacts_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "content_jobs"
             referencedColumns: ["id"]
           },
         ]
@@ -451,6 +559,22 @@ export type Database = {
         }
         Returns: string
       }
+      create_job_artifact: {
+        Args: {
+          p_duration_s?: number
+          p_height?: number
+          p_iteration?: number
+          p_job_id: string
+          p_key?: string
+          p_kind: string
+          p_metadata?: Json
+          p_mime_type?: string
+          p_role: string
+          p_url?: string
+          p_width?: number
+        }
+        Returns: string
+      }
       emit_progress_event: {
         Args: {
           p_job_id: string
@@ -465,6 +589,11 @@ export type Database = {
         Args: { p_subscription_id: string }
         Returns: undefined
       }
+      extend_content_job_vt: {
+        Args: { p_msg_id: number; p_visibility_timeout_seconds: number }
+        Returns: boolean
+      }
+      get_agent_daily_spend: { Args: { p_day?: string }; Returns: number }
       get_brand: {
         Args: { p_brand_id: string }
         Returns: {
@@ -594,6 +723,24 @@ export type Database = {
           topic: string
         }[]
       }
+      get_job_artifacts: {
+        Args: { p_job_id: string }
+        Returns: {
+          created_at: string
+          duration_s: number
+          height: number
+          id: string
+          iteration: number
+          job_id: string
+          key: string
+          kind: string
+          metadata: Json
+          mime_type: string
+          role: string
+          url: string
+          width: number
+        }[]
+      }
       get_job_events: {
         Args: { p_job_id: string }
         Returns: {
@@ -647,6 +794,19 @@ export type Database = {
           read_ct: number
           vt: string
         }[]
+      }
+      record_agent_usage: {
+        Args: {
+          p_estimated_cost_usd?: number
+          p_input_tokens?: number
+          p_job_id: string
+          p_metadata?: Json
+          p_model: string
+          p_output_tokens?: number
+          p_provider: string
+          p_purpose: string
+        }
+        Returns: number
       }
       record_webhook_event: {
         Args: { p_event_type: string; p_payload: Json; p_webhook_id: string }
@@ -886,4 +1046,3 @@ export const Constants = {
     },
   },
 } as const
-

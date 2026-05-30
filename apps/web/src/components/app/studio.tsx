@@ -53,10 +53,29 @@ export function Studio({ job, wsUrl, initialEvents }: { job: Job; wsUrl: string;
  () => stream.events.filter((e) => e.step === 'render:frame'),
  [stream.events],
  );
+ const artifacts = useMemo(
+ () => stream.events.filter((e) => e.step === 'artifact:create'),
+ [stream.events],
+ );
+ const agentEvents = useMemo(
+ () => stream.events.filter((e) => e.step.startsWith('agent:')),
+ [stream.events],
+ );
+ const visionReviews = useMemo(
+ () => stream.events.filter((e) => e.step === 'vision:review'),
+ [stream.events],
+ );
+ const latestBudget = agentEvents.findLast((e) => e.step === 'agent:budget') ?? null;
 
  const lastFrame = frames[frames.length - 1] ?? null;
  const lastPoster = posterLayers[posterLayers.length - 1] ?? null;
- const previewUrl = (lastPoster?.payload?.preview_url as string | undefined)
+ const finalArtifact = artifacts.findLast((e) => e.payload?.role === 'final') ?? null;
+ const draftArtifact = artifacts.findLast((e) => e.payload?.role === 'draft') ?? null;
+ const previewUrl = (finalArtifact?.payload?.thumbnail_url as string | undefined)
+ ?? (finalArtifact?.payload?.url as string | undefined)
+ ?? (draftArtifact?.payload?.thumbnail_url as string | undefined)
+ ?? (draftArtifact?.payload?.url as string | undefined)
+ ?? (lastPoster?.payload?.preview_url as string | undefined)
  ?? (lastFrame?.payload?.thumbnail_url as string | undefined)
  ?? job.thumbnail_url
  ?? job.output_url
@@ -112,6 +131,80 @@ export function Studio({ job, wsUrl, initialEvents }: { job: Job; wsUrl: string;
  Awaiting first frame…
  </div>
  )}
+ </div>
+ </Panel>
+
+ <Panel title="Agent" subtitle={`${agentEvents.length} events`}>
+ <ul className="space-y-2 text-sm">
+ {agentEvents.slice(-8).map((e) => (
+ <li key={e.ts} className="rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2">
+ <div className="flex items-center justify-between gap-2">
+ <span className="font-mono text-[10px] tracking-wider text-[var(--color-ink-3)]">{e.step}</span>
+ <span className="font-mono text-[10px] text-[var(--color-ink-3)]">{fmtTime(e.ts)}</span>
+ </div>
+ <div className="mt-1 text-[var(--color-ink)]">{e.message}</div>
+ </li>
+ ))}
+ {agentEvents.length === 0 && <li className="text-sm text-[var(--color-ink-3)]">Waiting for the agent…</li>}
+ </ul>
+ </Panel>
+
+ <Panel title="Artifacts" subtitle={`${artifacts.length} created`}>
+ <div className="grid grid-cols-2 gap-2">
+ {artifacts.slice(-6).map((a) => (
+ <a
+ key={a.ts}
+ href={(a.payload?.url as string | undefined) ?? '#'}
+ target="_blank"
+ rel="noreferrer"
+ className="overflow-hidden rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-[var(--color-surface)]"
+ >
+ <div className="aspect-square bg-[var(--color-paper-3)]">
+ {(a.payload?.thumbnail_url as string | undefined) ? (
+ <img src={a.payload!.thumbnail_url as string} alt={(a.payload?.kind as string) ?? 'artifact'} className="h-full w-full object-cover" />
+ ) : (
+ <div className="grid h-full place-items-center px-2 text-center font-mono text-[10px] text-[var(--color-ink-3)]">
+ {(a.payload?.mime_type as string | undefined) ?? 'artifact'}
+ </div>
+ )}
+ </div>
+ <div className="flex items-center justify-between px-2 py-1.5 text-[10px]">
+ <span className="font-mono text-[var(--color-ink-3)]">{(a.payload?.kind as string) ?? 'file'}</span>
+ <span className="rounded-full bg-[var(--color-paper-3)] px-1.5">{(a.payload?.role as string) ?? 'draft'}</span>
+ </div>
+ </a>
+ ))}
+ {artifacts.length === 0 && <div className="col-span-2 text-sm text-[var(--color-ink-3)]">No artifacts yet.</div>}
+ </div>
+ </Panel>
+
+ <Panel title="Vision" subtitle={`${visionReviews.length} reviews`}>
+ <ul className="space-y-2 text-sm">
+ {visionReviews.slice(-5).map((v) => (
+ <li key={v.ts} className="rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2">
+ <div className="flex items-center justify-between">
+ <span className="font-medium">{v.payload?.pass ? 'Pass' : 'Needs revision'}</span>
+ <span className="font-mono text-[10px] text-[var(--color-ink-3)]">{Math.round(Number(v.payload?.score ?? 0) * 100)}%</span>
+ </div>
+ {Array.isArray(v.payload?.issues) && v.payload.issues.length > 0 && (
+ <div className="mt-1 text-xs text-[var(--color-ink-3)]">{v.payload.issues.map(String).join(' · ')}</div>
+ )}
+ </li>
+ ))}
+ {visionReviews.length === 0 && <li className="text-sm text-[var(--color-ink-3)]">No visual review yet.</li>}
+ </ul>
+ </Panel>
+
+ <Panel title="Budget" subtitle="agent spend">
+ <div className="text-sm text-[var(--color-ink-3)]">
+ {latestBudget ? (
+ <div>
+ <div className="font-mono text-2xl text-[var(--color-ink)]">
+ ${Number(latestBudget.payload?.job_spent_usd ?? 0).toFixed(3)}
+ </div>
+ <div className="mt-1">job cap ${Number(latestBudget.payload?.job_cap_usd ?? 0).toFixed(2)} · daily cap ${Number(latestBudget.payload?.cap_usd ?? 0).toFixed(2)}</div>
+ </div>
+ ) : 'No spend recorded yet.'}
  </div>
  </Panel>
 

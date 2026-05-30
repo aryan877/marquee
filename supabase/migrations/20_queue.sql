@@ -126,8 +126,33 @@ REVOKE ALL ON FUNCTION public.archive_content_job(BIGINT)
 GRANT EXECUTE ON FUNCTION public.archive_content_job(BIGINT)
   TO service_role;
 
--- Drop legacy orphan helper (no callers).
+-- ─── extend_content_job_vt ───
 DROP FUNCTION IF EXISTS public.extend_content_job_vt(BIGINT, INT);
+CREATE FUNCTION public.extend_content_job_vt(
+  p_msg_id BIGINT,
+  p_visibility_timeout_seconds INT
+)
+RETURNS BOOLEAN
+LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = ''
+AS $$
+BEGIN
+  IF p_visibility_timeout_seconds <= 0 THEN
+    RAISE EXCEPTION 'visibility timeout must be positive';
+  END IF;
+
+  UPDATE pgmq.q_content_jobs
+  SET vt = clock_timestamp() + make_interval(secs => p_visibility_timeout_seconds)
+  WHERE msg_id = p_msg_id;
+
+  RETURN FOUND;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.extend_content_job_vt(BIGINT, INT)
+  FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.extend_content_job_vt(BIGINT, INT)
+  TO service_role;
 
 -- ─── queue_position (client-callable estimate) ───
 -- Returns the number of PENDING jobs ahead of this one in priority order.

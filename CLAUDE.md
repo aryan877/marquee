@@ -8,15 +8,15 @@ Built at an open-air hackathon (top 1000 of 10000). Generates daily posters + ca
 |---|---|
 | Mono | pnpm workspaces + Turborepo |
 | Web | Next.js 16 (App Router) + Tailwind v4 + Framer Motion |
-| Worker | Effect TS + Playwright + ffmpeg + msedge-tts |
+| Worker | Effect TS + OpenAI Agents SDK + Playwright + ffmpeg + msedge-tts |
 | Auth | Supabase email/password |
 | DB | Cloud Supabase `syrkuqywxczllfdsvmgp` (Prisma DDL + Supabase migrations for RLS/RPCs) |
 | Queue | PGMQ + priority dequeue |
 | Realtime | **Raw WS** from worker to browser (NOT Supabase Realtime) |
-| LLM | OpenRouter (default `openai/gpt-5.5`) — graceful fallback to deterministic templates |
+| LLM | OpenRouter (single `OPENROUTER_MODEL`, default `xiaomi/mimo-v2.5`) — deterministic fallback if no key |
 | TTS | `msedge-tts` (pure Node, no Python) |
 | Video | ffmpeg + Playwright stills (NOT Remotion) |
-| Posters | Playwright screenshots Next.js `/render/poster/[id]` route |
+| Posters | Fal AI `openai/gpt-image-2` assets + Playwright screenshots Next.js `/render/poster/[id]` route |
 | Social | `@atproto/api` for Bluesky (server-side, no Playwright) |
 | Storage | Local FS in dev; R2 in prod. Worker serves `/outputs/` itself |
 | Payments | Dodo Payments — Founder Pass $50/mo |
@@ -33,8 +33,9 @@ marquee/
 │           ├── config.ts        # Effect Config service
 │           ├── ws/              # WS gateway: server.ts, job-stream.ts, auth.ts, protocol.ts
 │           ├── queue/           # PGMQ consumer
-│           ├── lib/             # supabase, llm, renderer (playwright), storage, tts, ffmpeg, cats
-│           └── pipelines/       # poster.ts, video.ts, dispatcher
+│           ├── agent/           # server-side content agent, provider, tools
+│           ├── lib/             # supabase, llm, renderer, storage, tts, ffmpeg, cats, vision, fal, budget
+│           └── pipelines/       # legacy poster/video + dispatcher
 ├── packages/
 │   ├── db/                 # Prisma schema, generated types, RPC client wrapper
 │   └── shared/             # billing, palettes, schemas (zod), constants, progress step taxonomy
@@ -48,10 +49,12 @@ marquee/
 2. `/app/generate` → pick brand, type (POSTER | VIDEO | CAROUSEL | REEL), topic, platforms
 3. `POST /api/jobs` calls `submit_content_job` RPC (atomic quota deduct + PENDING insert + `pgmq.send` in one TX), mints a short-lived JWT scoped to `job_id`, returns `{job_id, ws_url, token}`
 4. Browser navigates to `/app/jobs/[id]` (Studio) and opens the WS to the worker
-5. Worker queue consumer polls `read_next_content_job(vt=300)`, dispatches by content_type:
-   - **Poster**: 5 sequential Playwright shots of `/render/poster/[id]?layers=background,wordmark,headline,…` (cumulative), each emits `poster:layer` with `preview_url`
-   - **Video**: LLM script → per-line msedge-tts → per-line Playwright card → per-line ffmpeg clip → ffmpeg concat → final.mp4. Streams `script:line`, `tts:chunk`, `asset:fetch`, `render:frame`, `render:done`
-6. Worker sets status REVIEW, Studio shows "Approve & Post" CTA
+5. Worker queue consumer polls `read_next_content_job(vt=300)`, then the server-side content agent runs unless `AGENT_MODE=legacy`:
+   - Agent plans with the single OpenRouter `OPENROUTER_MODEL` (default MiMo), calls bounded tools, renders drafts, reviews visual output with vision, revises if needed, and finalizes.
+   - Poster tools can request Fal AI `openai/gpt-image-2` assets (`FAL_KEY`) and render Playwright poster drafts.
+   - Video tools make 20–30s vertical cat explainers from short lines, msedge-tts, Playwright cards, and ffmpeg clips.
+   - Tools still emit legacy `poster:layer`, `script:line`, `tts:chunk`, `asset:fetch`, `render:frame`, `render:done` events plus agent/artifact/vision events.
+6. Agent sets status REVIEW, Studio shows "Approve & Post" CTA
 7. `POST /api/jobs/[id]/approve` posts to selected platforms (Bluesky live), sets POSTED, emits `post:done`
 
 ## Architecture rules
@@ -68,12 +71,13 @@ Pattern: `Ref<HashMap<jobId, PubSub.dropping(64)>>` keyed by job_id. Per-connect
 - RLS, grants, RPCs, triggers, PGMQ queues, pg_cron jobs → `supabase/migrations/*.sql` (numbered 00–80)
 - Never declare the `auth` schema in Prisma. Bridge from `auth.users` lives as triggers in `10_rls_and_triggers.sql`.
 
-Apply order:
+Apply order for local/dev changes:
 ```bash
-pnpm --filter @marquee/db exec prisma migrate deploy   # tables
-pnpm --filter @marquee/db exec tsx scripts/apply-migrations.ts   # SQL
-pnpm --filter @marquee/db exec tsx scripts/gen-types.ts          # regen types
+pnpm --filter @marquee/db exec prisma migrate dev      # table DDL through Prisma CLI
+# Apply Supabase SQL (RLS/RPC/triggers/PGMQ/pg_cron) through the marquee Supabase MCP apply_migration tool.
+pnpm --filter @marquee/db exec tsx scripts/gen-types.ts          # regen types after DB changes
 ```
+For production table rollout use Prisma CLI (`migrate deploy`). For Supabase-owned SQL, prefer the configured `marquee-supabase` MCP instead of ad-hoc psql scripts.
 
 ### RPC rules
 - `SECURITY DEFINER`, `SET search_path = ''`, `(select auth.uid())` for client-scoped reads
@@ -95,6 +99,10 @@ Browser: `getSupabaseBrowser()`. Pass `<Database>` generic — wiring already do
 
 ### `progress_events.payload` (JSONB) is the protocol
 Worker emits typed payloads per step group. The Studio reads them by step prefix:
+- `agent:tool:start|done|error` → `{tool_name, iteration, args_preview?, duration_ms?, error?}`
+- `artifact:create` → `{artifact_id, kind, role, url, thumbnail_url, mime_type, width, height, duration_s, iteration}`
+- `vision:review` → `{artifact_id, model, pass, score, issues, suggested_edits, iteration}`
+- `agent:budget` → `{spent_usd, cap_usd, job_spent_usd, job_cap_usd}`
 - `script:line` → `{index, text, emotion}`
 - `tts:chunk`   → `{line_index, url, duration_s, voice}`
 - `asset:fetch` → `{asset_id, emotion, url, thumbnail_url, scene_index}`
@@ -110,27 +118,27 @@ Versioned envelope, see `apps/worker/src/ws/protocol.ts`:
 ```
 Bump `v` to evolve. Client hook `apps/web/src/lib/use-job-stream.ts` reconnects on close, pings every 20s.
 
-## Pipelines
+## Content agent
 
-### Poster pipeline (`apps/worker/src/pipelines/poster.ts`)
-Templates: editorial, stat, listicle, quote. Worker:
-1. LLM writes `{headline, subhead, caption, hashtags}` JSON
-2. For each layer in `[background, wordmark, headline, accent, final]`:
-   - Build URL: `/render/poster/[id]?template=editorial&layers=background,wordmark,…&headline=…`
-   - Playwright shot at 1080×1350
-   - Save to `/outputs/<job_id>/layer-N-<layer>.png`
-   - Emit `poster:layer` with `preview_url`
-3. Final layer = output. Sets caption + hashtags. Status → REVIEW.
+`apps/worker/src/pipelines/index.ts` dispatches POSTER, CAROUSEL, VIDEO, and REEL to `apps/worker/src/agent/run-content-agent.ts` unless `AGENT_MODE=legacy`. The old poster/video pipelines remain as fallback and substrate.
 
-### Video pipeline (`apps/worker/src/pipelines/video.ts`)
-Format: 30-second cat-meme TikTok explainer. 1080×1920 vertical. Worker:
-1. LLM writes `{hook, lines: [{text, emotion}]×5-7, caption, hashtags}` JSON
-2. For each line: msedge-tts → MP3 → ffprobe duration → Playwright card render (`/render/video/card/[id]?line=…&emoji=…&color=…`) → ffmpeg clip (still+audio → MP4)
-3. ffmpeg concat all clips → `final.mp4`
-4. Real green-screen cat clips slot in later by extending `apps/worker/assets/cats/manifest.json` with `{url, type:'mp4', chroma:'#00ff00'}` entries and adding a chroma-key step in `lib/ffmpeg.ts`.
+Agent runtime files:
+- `apps/worker/src/agent/provider.ts` builds the OpenRouter-compatible Agents SDK provider.
+- `apps/worker/src/agent/tools.ts` exposes bounded tools: `render_poster_draft`, `render_video_draft`, `review_artifact`, `finalize_artifact`, `emit_budget`.
+- `apps/worker/src/lib/vision.ts` reviews local image bytes or sampled video frames with the same `OPENROUTER_MODEL`.
+- `apps/worker/src/lib/fal-image.ts` calls Fal AI image generation through `FAL_KEY` and `FAL_IMAGE_MODEL`.
+- `apps/worker/src/lib/agent-budget.ts` enforces `AGENT_DAILY_USD_CAP` and `AGENT_JOB_USD_CAP`.
 
-### Pipeline dispatch
-`apps/worker/src/pipelines/index.ts` routes by `job.content_type`. Add a new pipeline? Add a case here, write the handler, ensure all its deps are in the `Infrastructure` layer in `apps/worker/src/index.ts`.
+Rules:
+- Use only one OpenRouter model for reasoning and vision: `OPENROUTER_MODEL` (default `xiaomi/mimo-v2.5`). Do not add separate vision/reasoning model env vars.
+- The agent must render, review with vision, and only then finalize.
+- Tool inputs are zod-clipped/validated; the agent never chooses arbitrary shell commands, file paths, RPC names, or external URLs.
+- Video/REEL MVP output is 20–30 seconds max, vertical 1080×1920.
+- Fal AI image generation is optional; no `FAL_KEY` means the poster tool still renders deterministic Playwright output.
+
+### Legacy pipelines
+
+`apps/worker/src/pipelines/poster.ts` and `apps/worker/src/pipelines/video.ts` are preserved for `AGENT_MODE=legacy` and fallback reference. Add new orchestration in agent tools first, not by expanding fixed pipelines.
 
 ## Queue + worker lifecycle
 
@@ -139,6 +147,7 @@ PGMQ queue `content_jobs`. Worker polls `read_next_content_job(vt=300)` every 75
 - Visibility timeout 5 min → if worker dies mid-pipeline, msg reappears, sweeper marks orphan jobs FAILED + refunds (every minute via pg_cron, `sweep_orphan_jobs`)
 - Terminal → `archive_content_job(msg_id)`. Failure → `refund_content_job(job_id, error_message)` (idempotent)
 - Worker heartbeat to `worker_heartbeat` every 15s
+- Agent jobs with `ctx.queue.msgId` extend visibility through `extend_content_job_vt` while running and emit `agent:heartbeat`.
 
 ## Storage
 
@@ -148,9 +157,9 @@ Prod: swap `Storage.saveBytes` to write to R2; URL becomes `${R2_PUBLIC_URL}/<ke
 
 ## LLM
 
-OpenRouter (OpenAI-compatible HTTP API). One model does all jobs (script, headline, caption, emotion). Default `openai/gpt-5.5`, override via `OPENROUTER_MODEL` env. Service is `apps/worker/src/lib/llm.ts` with `complete()` + `completeJson()`.
+OpenRouter (OpenAI-compatible HTTP API). One model does all agent reasoning and vision review. Default `OPENROUTER_MODEL=xiaomi/mimo-v2.5`; do not split reasoning and vision models. `apps/worker/src/lib/llm.ts` still provides simple completion helpers; the server-side agent uses `@openai/agents` via `apps/worker/src/agent/provider.ts`.
 
-No API key? Pipelines gracefully fall back to deterministic templates so the demo still produces real output. Look for `if (!llm.isReady)` branches.
+No OpenRouter key? The content agent uses a deterministic local fallback that still calls the same render/review/finalize tools and produces output.
 
 ## Auth tokens for WS
 
@@ -183,7 +192,9 @@ Required:
 - `NEXT_PUBLIC_WORKER_WS_URL`, `WORKER_HTTP_URL`
 
 For features that need keys (works without — fall back paths exist):
-- `OPENROUTER_API_KEY` — real LLM copy
+- `OPENROUTER_API_KEY`, `OPENROUTER_MODEL` — agent reasoning + vision
+- `FAL_KEY`, `FAL_IMAGE_MODEL` — Fal AI image assets (`openai/gpt-image-2` by default)
+- `AGENT_DAILY_USD_CAP`, `AGENT_JOB_USD_CAP` — local budget guardrails
 - `DODO_API_KEY`, `DODO_WEBHOOK_SECRET`, `DODO_PRODUCT_ID_FOUNDER` — checkout
 - `R2_*` — prod storage (skip for dev)
 
@@ -200,9 +211,9 @@ pnpm dev:web         # http://localhost:3000
 pnpm dev:worker      # ws :4001, http :4001/outputs/, dev-emit :4002
 
 # DB
-pnpm db:migrate      # prisma migrate (tables)
-pnpm db:gen          # gen src/database.types.ts from Supabase
-pnpm --filter @marquee/db exec tsx scripts/apply-migrations.ts   # apply RLS/RPC SQL
+pnpm --filter @marquee/db exec prisma migrate dev      # table DDL through Prisma CLI
+# Supabase SQL goes through marquee-supabase MCP apply_migration
+pnpm --filter @marquee/db exec tsx scripts/gen-types.ts          # regen src/database.types.ts
 ```
 
 To seed a real test job (creates user + brand + submits job):

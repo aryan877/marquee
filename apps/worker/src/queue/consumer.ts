@@ -47,7 +47,7 @@ const tickOnce = Effect.gen(function* () {
     return;
   }
 
-  const ctx: PipelineContext = { job, brand };
+  const ctx: PipelineContext = { job, brand, queue: { msgId } };
 
   yield* dispatchPipeline(ctx).pipe(
     Effect.catchAllCause((cause) =>
