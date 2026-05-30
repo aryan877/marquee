@@ -79,12 +79,12 @@ export function Dashboard({
  No posts yet. Hit Generate to make your first.
  </div>
  ) : (
- <ul className="mt-5 divide-y divide-[var(--color-border)] rounded-[var(--radius-lg)] border border-[var(--color-border)] surface">
+ <ul className="mt-5 grid gap-3">
  {jobs.map((j) => (
  <li key={j.id}>
  <Link
  href={`/app/jobs/${j.id}`}
- className="flex items-center justify-between gap-4 px-5 py-4 transition-colors hover:bg-[var(--color-paper-2)]"
+ className="surface flex items-center justify-between gap-4 rounded-[var(--radius-md)] border border-[var(--color-border)] px-5 py-4 shadow-[var(--shadow-soft)] transition-[border-color,box-shadow,transform] hover:-translate-y-0.5 hover:border-[var(--color-border-strong)] hover:shadow-[var(--shadow-lifted)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-ink)]"
  >
  <div className="min-w-0 flex-1">
  <div className="flex items-center gap-2 text-sm">

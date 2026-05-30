@@ -17,9 +17,9 @@ export default async function JobsPage() {
       <div className="mx-auto max-w-5xl">
         <div className="flex flex-wrap items-baseline justify-between gap-4">
           <div>
-            <p className="font-mono text-xs tracking-[0.04em] text-[var(--color-ink-3)]">Posts</p>
+            <p className="font-mono text-xs tracking-[0.04em] text-[var(--color-ink-3)]">Generations</p>
             <h1 className="mt-2 font-display text-4xl tracking-[-0.04em] md:text-5xl">
-              Every post you&apos;ve made.
+              Past generations.
             </h1>
           </div>
           <Link

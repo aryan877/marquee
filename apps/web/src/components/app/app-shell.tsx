@@ -8,6 +8,7 @@ import { getSupabaseBrowser } from '@/lib/supabase/client';
 const NAV = [
  { href: '/app', label: 'Dashboard', icon: GridIcon },
  { href: '/app/generate', label: 'Generate', icon: SparkleIcon },
+ { href: '/app/jobs', label: 'Generations', icon: HistoryIcon },
  { href: '/app/brands', label: 'Brands', icon: TagIcon },
  { href: '/app/campaigns', label: 'Campaigns', icon: CalendarIcon },
  { href: '/app/settings', label: 'Settings', icon: GearIcon },
@@ -136,6 +137,16 @@ function SparkleIcon(p: React.SVGProps<SVGSVGElement>) {
  return (
  <svg viewBox="0 0 24 24" fill="currentColor" {...p}>
  <path d="M12 2 14 9l7 2-7 2-2 7-2-7-7-2 7-2z" />
+ </svg>
+ );
+}
+function HistoryIcon(p: React.SVGProps<SVGSVGElement>) {
+ return (
+ <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" {...p}>
+ <path d="M5 7h14M5 12h14M5 17h9" />
+ <circle cx="3" cy="7" r="1" fill="currentColor" stroke="none" />
+ <circle cx="3" cy="12" r="1" fill="currentColor" stroke="none" />
+ <circle cx="3" cy="17" r="1" fill="currentColor" stroke="none" />
  </svg>
  );
 }
