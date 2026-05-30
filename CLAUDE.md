@@ -15,7 +15,7 @@ VPS deploy target: SSH alias `hackathon-server`, repo `/opt/marquee`, worker ser
 | DB | Cloud Supabase `syrkuqywxczllfdsvmgp` (Prisma DDL + Supabase migrations for RLS/RPCs) |
 | Queue | PGMQ + priority dequeue |
 | Realtime | **Raw WS** from worker to browser (NOT Supabase Realtime) |
-| LLM | OpenRouter (single `OPENROUTER_MODEL`, default `xiaomi/mimo-v2.5`) — deterministic fallback if no key |
+| LLM | OpenRouter (single `OPENROUTER_MODEL`, default `xiaomi/mimo-v2.5`) — deterministic tool fallback if no key |
 | TTS | `msedge-tts` (pure Node, no Python) |
 | Video | ffmpeg + Playwright stills (NOT Remotion) |
 | Posters | Fal AI `openai/gpt-image-2` assets + Playwright screenshots Next.js `/render/poster/[id]` route |
@@ -37,7 +37,7 @@ marquee/
 │           ├── queue/           # PGMQ consumer
 │           ├── agent/           # server-side content agent, provider, tools
 │           ├── lib/             # supabase, llm, renderer, storage, tts, ffmpeg, cats, vision, fal, budget
-│           └── pipelines/       # legacy poster/video + dispatcher
+│           └── pipelines/       # dispatcher + progress helpers
 ├── packages/
 │   ├── db/                 # Prisma schema, generated types, RPC client wrapper
 │   └── shared/             # billing, palettes, schemas (zod), constants, progress step taxonomy
@@ -51,11 +51,11 @@ marquee/
 2. `/app/generate` → pick brand, type (POSTER | VIDEO | CAROUSEL | REEL), topic, platforms
 3. `POST /api/jobs` calls `submit_content_job` RPC (atomic quota deduct + PENDING insert + `pgmq.send` in one TX), mints a short-lived JWT scoped to `job_id`, returns `{job_id, ws_url, token}`
 4. Browser navigates to `/app/jobs/[id]` (Studio) and opens the WS to the worker
-5. Worker queue consumer polls `read_next_content_job(vt=300)`, then the server-side content agent runs unless `AGENT_MODE=legacy`:
+5. Worker queue consumer polls `read_next_content_job(vt=300)`, then the server-side content agent runs:
    - Agent plans with the single OpenRouter `OPENROUTER_MODEL` (default MiMo), calls bounded tools, renders drafts, reviews visual output with vision, revises if needed, and finalizes.
    - Poster tools can request Fal AI `openai/gpt-image-2` assets (`FAL_KEY`) and render Playwright poster drafts.
    - Video tools make 20–30s vertical cat explainers from short lines, msedge-tts, Playwright cards, and ffmpeg clips.
-   - Tools still emit legacy `poster:layer`, `script:line`, `tts:chunk`, `asset:fetch`, `render:frame`, `render:done` events plus agent/artifact/vision events.
+   - Tools still emit `poster:layer`, `script:line`, `tts:chunk`, `asset:fetch`, `render:frame`, `render:done` events plus agent/artifact/vision events.
 6. Agent sets status REVIEW, Studio shows "Approve & Post" CTA
 7. `POST /api/jobs/[id]/approve` posts to selected platforms (Bluesky live), sets POSTED, emits `post:done`
 
@@ -131,7 +131,7 @@ Bump `v` to evolve. Client hook `apps/web/src/lib/use-job-stream.ts` reconnects 
 
 ## Content agent
 
-`apps/worker/src/pipelines/index.ts` dispatches POSTER, CAROUSEL, VIDEO, and REEL to `apps/worker/src/agent/run-content-agent.ts` unless `AGENT_MODE=legacy`. The old poster/video pipelines remain as fallback and substrate.
+`apps/worker/src/pipelines/index.ts` dispatches POSTER, CAROUSEL, VIDEO, and REEL to `apps/worker/src/agent/run-content-agent.ts`. There is no fixed-pipeline mode switch.
 
 Agent runtime files:
 - `apps/worker/src/agent/provider.ts` builds the OpenRouter-compatible Agents SDK provider.
@@ -146,10 +146,6 @@ Rules:
 - Tool inputs are zod-clipped/validated; the agent never chooses arbitrary shell commands, file paths, RPC names, or external URLs.
 - Video/REEL MVP output is 20–30 seconds max, vertical 1080×1920.
 - Fal AI image generation is optional; no `FAL_KEY` means the poster tool still renders deterministic Playwright output.
-
-### Legacy pipelines
-
-`apps/worker/src/pipelines/poster.ts` and `apps/worker/src/pipelines/video.ts` are preserved for `AGENT_MODE=legacy` and fallback reference. Add new orchestration in agent tools first, not by expanding fixed pipelines.
 
 ## Queue + worker lifecycle
 
