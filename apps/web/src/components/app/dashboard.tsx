@@ -67,43 +67,6 @@ export function Dashboard({
  </ul>
  </section>
 
- <section className="mt-12">
- <header className="flex items-baseline justify-between">
- <h2 className="font-display text-2xl tracking-[-0.03em]">Recent</h2>
- <Link href="/app/jobs" className="text-sm text-[var(--color-ink-3)] hover:text-[var(--color-ink)]">
- All →
- </Link>
- </header>
- {jobs.length === 0 ? (
- <div className="mt-5 surface rounded-[var(--radius-lg)] border border-dashed border-[var(--color-border-strong)] p-10 text-center text-[var(--color-ink-3)]">
- No posts yet. Hit Generate to make your first.
- </div>
- ) : (
- <ul className="mt-5 grid gap-3">
- {jobs.map((j) => (
- <li key={j.id}>
- <Link
- href={`/app/jobs/${j.id}`}
- className="surface flex items-center justify-between gap-4 rounded-[var(--radius-md)] border border-[var(--color-border)] px-5 py-4 shadow-[var(--shadow-soft)] transition-[border-color,box-shadow,transform] hover:-translate-y-0.5 hover:border-[var(--color-border-strong)] hover:shadow-[var(--shadow-lifted)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-ink)]"
- >
- <div className="min-w-0 flex-1">
- <div className="flex items-center gap-2 text-sm">
- <StatusDot status={j.status} />
- <span className="font-medium">{j.topic ?? 'Untitled'}</span>
- </div>
- <div className="mt-1 truncate text-xs text-[var(--color-ink-3)]">
- {j.content_type} · {(j.platforms ?? []).join(', ') || 'no platforms'} · {new Date(j.created_at).toLocaleString()}
- </div>
- </div>
- <span className="font-mono text-xs tracking-wider text-[var(--color-ink-3)]">
- {j.status}
- </span>
- </Link>
- </li>
- ))}
- </ul>
- )}
- </section>
  </div>
  </div>
  );
@@ -129,15 +92,6 @@ function StatCard({ label, value, highlight }: { label: string; value: number; h
  <div className="mt-2 font-display text-3xl tracking-[-0.04em]">{value}</div>
  </div>
  );
-}
-
-function StatusDot({ status }: { status: string }) {
- const cls =
- status === 'POSTED' ? 'bg-[var(--color-signal-good)]' :
- status === 'FAILED' ? 'bg-[var(--color-signal-bad)]' :
- status === 'REVIEW' ? 'bg-[var(--color-accent-strong)]' :
- 'bg-[var(--color-ink-3)] animate-pulse';
- return <span aria-hidden className={`inline-block h-2 w-2 rounded-full ${cls}`} />;
 }
 
 function BrandChip({ palette }: { palette: BrandPalette }) {
