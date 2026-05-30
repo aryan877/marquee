@@ -126,13 +126,16 @@ export function GenerateForm({ brands }: { brands: Brand[] }) {
  </section>
 
  <section>
- <div className="flex items-center justify-between gap-3">
  <label htmlFor="generation-topic" className="font-mono text-xs tracking-[0.2em] text-[var(--color-ink-3)]">
  Topic (optional)
  </label>
+ <div className="mt-3">
  <AiFillButton
  label="Suggest"
  disabled={!activeBrand}
+ promptRequired
+ promptLabel="Generation brief for AI topic suggestion"
+ promptPlaceholder="Describe the angle, offer, campaign, pain point, or audience..."
  request={{
  form: 'generation-topic',
  contentType: type,

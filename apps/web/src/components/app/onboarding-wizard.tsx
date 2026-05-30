@@ -186,9 +186,12 @@ function Stepper({ step }: { step: number }) {
 function BrandStep({ draft, setDraft }: { draft: Draft; setDraft: (d: Draft) => void }) {
  return (
  <div className="grid max-w-2xl gap-4 sm:grid-cols-2">
- <div className="flex justify-end sm:col-span-2">
+ <div className="sm:col-span-2">
  <AiFillButton
- label="AI fill"
+ label="Fill"
+ promptRequired
+ promptLabel="Brand context for AI fill"
+ promptPlaceholder="Describe the brand, customer, offer, tone, or anything you already know..."
  request={{ form: 'brand-onboarding', draft }}
  onApply={(suggestion) => setDraft(applyBrandSuggestion(draft, suggestion))}
  />

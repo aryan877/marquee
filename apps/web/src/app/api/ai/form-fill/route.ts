@@ -27,14 +27,16 @@ const BrandDraftSchema = z.object({
 }).default({});
 
 const BrandFillRequestSchema = z.object({
-  form:  z.literal('brand-onboarding'),
-  draft: BrandDraftSchema,
+  form:         z.literal('brand-onboarding'),
+  draft:        BrandDraftSchema,
+  instructions: z.string().max(700).optional(),
 });
 
 const GenerateFillRequestSchema = z.object({
   form:        z.literal('generation-topic'),
   contentType: z.enum(['POSTER', 'VIDEO', 'CAROUSEL', 'REEL']),
   topic:       z.string().max(360).optional(),
+  instructions: z.string().max(700).optional(),
   brand:       z.object({
     name:             z.string().max(120),
     handle:           z.string().max(80).nullable().optional(),
@@ -108,7 +110,8 @@ export async function POST(request: NextRequest) {
 function buildPrompt(request: FormFillRequest) {
   if (request.form === 'brand-onboarding') {
     return JSON.stringify({
-      task: 'Complete this brand onboarding form. Preserve good existing user values. Use null only when a field should stay blank.',
+      task: 'Complete this brand onboarding form. Use userInstructions as the primary signal. Preserve good existing user values. Use null only when a field should stay blank.',
+      userInstructions: request.instructions?.trim() || null,
       current: request.draft,
       output: {
         name: 'brand name, <= 80 chars',
@@ -127,7 +130,8 @@ function buildPrompt(request: FormFillRequest) {
   }
 
   return JSON.stringify({
-    task: 'Suggest or improve one topic for the selected brand and content type.',
+    task: 'Suggest or improve one topic for the selected brand and content type. Use userInstructions as the primary signal.',
+    userInstructions: request.instructions?.trim() || null,
     contentType: request.contentType,
     currentTopic: request.topic ?? null,
     brand: request.brand,
