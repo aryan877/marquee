@@ -33,6 +33,22 @@ $$;
 REVOKE ALL ON FUNCTION public.get_profile() FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.get_profile() TO authenticated, service_role;
 
+DROP FUNCTION IF EXISTS public.has_completed_onboarding();
+CREATE FUNCTION public.has_completed_onboarding()
+RETURNS BOOLEAN
+LANGUAGE sql STABLE SECURITY DEFINER
+SET search_path = ''
+AS $$
+  SELECT EXISTS (
+    SELECT 1
+    FROM public.brands
+    WHERE user_id = (select auth.uid())
+  );
+$$;
+
+REVOKE ALL ON FUNCTION public.has_completed_onboarding() FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.has_completed_onboarding() TO authenticated, service_role;
+
 -- ─── get_brands (current user, paginated) ───
 DROP FUNCTION IF EXISTS public.get_brands(INT, TIMESTAMPTZ);
 CREATE FUNCTION public.get_brands(

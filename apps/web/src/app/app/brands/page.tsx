@@ -23,7 +23,7 @@ export default async function BrandsPage() {
             </h1>
           </div>
           <Link
-            href="/app/onboarding"
+            href="/app/onboarding?mode=new"
             className="inline-flex items-center gap-2 rounded-full bg-[var(--color-ink)] px-5 py-2.5 text-sm text-[var(--color-paper)] hover:bg-[var(--color-ink-2)]"
           >
             New brand <span aria-hidden>+</span>

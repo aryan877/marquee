@@ -891,6 +891,7 @@ export type Database = {
           session: string
         }[]
       }
+      has_completed_onboarding: { Args: never; Returns: boolean }
       mark_content_job_approved: {
         Args: { p_job_id: string }
         Returns: undefined
