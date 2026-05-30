@@ -189,7 +189,7 @@ Other platforms (IG/TikTok/X/LinkedIn) are stubs — UI shows them in the platfo
 
 Single `.env` at repo root. `apps/web/.env.local` is a copy (Next.js needs it locally). When you change `.env`, also `cp .env apps/web/.env.local`.
 
-Vercel Production env is separate from local files. If a web/API route needs a new env var, add it to Vercel Production, add the key to `turbo.json` `globalEnv`, then redeploy. Deploy from the repo root with the root `.vercel` link (`vercel deploy --prod --force`); the Vercel project root is already `apps/web`, so deploying from `apps/web` makes Vercel look for `apps/web/apps/web`. Keep `.vercelignore` in place so CLI deploys do not upload local build artifacts or `node_modules`.
+Vercel Production env is separate from local files. If a web/API route needs a new env var, add it to Vercel Production with `vercel env add NAME production --value "$VALUE" --force --yes --sensitive`, add the key to `turbo.json` `globalEnv`, then redeploy. Do not rely on stdin for `vercel env add` in noninteractive agent runs. Deploy from the repo root with the root `.vercel` link (`vercel deploy --prod --force`); the Vercel project root is already `apps/web`, so deploying from `apps/web` makes Vercel look for `apps/web/apps/web`. Keep `.vercelignore` in place so CLI deploys do not upload local build artifacts or `node_modules`.
 
 Required:
 - `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`
