@@ -5,6 +5,7 @@ import { cn } from '@/lib/cn';
 import { AiFillButton } from '@/components/app/ai-fill-button';
 import { PLATFORM_META, isLiveSocialPlatform } from '@/components/marquee/platform-icons';
 import { LIVE_SOCIAL_PLATFORMS } from '@marquee/shared/schemas';
+import { coerceBrandPalette } from '@marquee/shared/palettes';
 import type { Database } from '@marquee/db';
 
 type Brand = Database['public']['Functions']['get_brands']['Returns'][number];
@@ -77,7 +78,7 @@ export function GenerateForm({ brands }: { brands: Brand[] }) {
  <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
  {brands.map((b) => {
  const active = b.id === brandId;
- const palette = (b.palette ?? {}) as Record<string, string>;
+ const palette = coerceBrandPalette(b.palette);
  return (
  <button
  key={b.id}

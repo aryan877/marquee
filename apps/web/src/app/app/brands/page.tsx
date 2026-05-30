@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { getSupabaseServer } from '@/lib/supabase/server';
 import type { Database } from '@marquee/db';
+import { coerceBrandPalette } from '@marquee/shared/palettes';
 
 type Brand = Database['public']['Functions']['get_brands']['Returns'][number];
 
@@ -58,8 +59,8 @@ function EmptyState() {
 }
 
 function BrandCard({ brand: b }: { brand: Brand }) {
-  const palette = (b.palette ?? {}) as Record<string, string>;
-  const colors = [palette.primary, palette.accent, palette.secondary].filter(Boolean) as string[];
+  const palette = coerceBrandPalette(b.palette);
+  const colors = [palette.primary, palette.accent, palette.secondary];
   return (
     <li>
       <Link

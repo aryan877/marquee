@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
 import { getSupabaseServer } from '@/lib/supabase/server';
+import { BrandEditor } from './brand-editor';
 
 export default async function BrandDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -12,9 +13,6 @@ export default async function BrandDetailPage({ params }: { params: Promise<{ id
   const brand = rows?.[0];
   if (!brand) notFound();
 
-  const palette = (brand.palette ?? {}) as Record<string, string>;
-  const voice   = (brand.voice ?? {})   as { tone?: string; style?: string };
-  const fonts   = (brand.fonts ?? {})   as { heading?: string; body?: string };
   const guide   = (brand.guidelines ?? {}) as { do?: string[]; dont?: string[]; vocabulary?: string[]; hashtags?: string[] };
 
   const { data: jobs } = await sb.rpc('get_content_jobs', { p_brand_id: id, p_limit: 12 });
@@ -26,14 +24,7 @@ export default async function BrandDetailPage({ params }: { params: Promise<{ id
           ← All brands
         </Link>
 
-        <div className="mt-4 flex flex-wrap items-baseline justify-between gap-4">
-          <div>
-            <p className="font-mono text-xs tracking-[0.04em] text-[var(--color-ink-3)]">Brand</p>
-            <h1 className="mt-2 font-display text-4xl tracking-[-0.04em] md:text-6xl">
-              {brand.name}
-            </h1>
-            {brand.handle && <p className="mt-2 text-[var(--color-ink-3)]">{brand.handle}</p>}
-          </div>
+        <div className="mt-4 flex justify-end">
           <Link
             href={`/app/generate?brand=${brand.id}`}
             className="inline-flex items-center gap-2 rounded-full bg-[var(--color-ink)] px-5 py-2.5 text-sm text-[var(--color-paper)] hover:bg-[var(--color-ink-2)]"
@@ -42,41 +33,7 @@ export default async function BrandDetailPage({ params }: { params: Promise<{ id
           </Link>
         </div>
 
-        <section className="mt-10 grid gap-6 md:grid-cols-2">
-          {brand.description && (
-            <Block title="Description">{brand.description}</Block>
-          )}
-          {brand.target_audience && (
-            <Block title="Target audience">{brand.target_audience}</Block>
-          )}
-          {brand.industry && <Block title="Industry">{brand.industry}</Block>}
-          {voice.tone && <Block title="Voice tone">{voice.tone}</Block>}
-        </section>
-
-        {Object.keys(palette).length > 0 && (
-          <section className="mt-10">
-            <SectionLabel>Palette</SectionLabel>
-            <ul className="mt-3 flex flex-wrap gap-3">
-              {Object.entries(palette).map(([k, v]) => (
-                <li key={k} className="flex items-center gap-2 rounded-full border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-1.5 text-xs">
-                  <span className="h-3 w-3 rounded-full border border-[var(--color-border)]" style={{ background: v }} />
-                  <span className="font-mono text-[var(--color-ink-2)]">{k}</span>
-                  <span className="font-mono text-[var(--color-ink-3)]">{v}</span>
-                </li>
-              ))}
-            </ul>
-          </section>
-        )}
-
-        {(fonts.heading || fonts.body) && (
-          <section className="mt-10">
-            <SectionLabel>Typography</SectionLabel>
-            <div className="mt-3 grid gap-3 sm:grid-cols-2">
-              {fonts.heading && <Block title="Heading">{fonts.heading}</Block>}
-              {fonts.body    && <Block title="Body">{fonts.body}</Block>}
-            </div>
-          </section>
-        )}
+        <BrandEditor brand={brand} />
 
         {(guide.do?.length || guide.dont?.length) && (
           <section className="mt-10">

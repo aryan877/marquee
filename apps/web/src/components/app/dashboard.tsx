@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import type { Database } from '@marquee/db';
+import { coerceBrandPalette, type BrandPalette } from '@marquee/shared/palettes';
 
 type Brand = Database['public']['Functions']['get_brands']['Returns'][number];
 type Job = Database['public']['Functions']['get_content_jobs']['Returns'][number];
@@ -49,7 +50,7 @@ export function Dashboard({
  className="surface block rounded-[var(--radius-lg)] border border-[var(--color-border)] p-5 lift hover:-translate-y-0.5 transition-transform"
  >
  <div className="flex items-center gap-3">
- <BrandChip palette={(b.palette ?? {}) as Record<string, string>} />
+ <BrandChip palette={coerceBrandPalette(b.palette)} />
  <div className="min-w-0 flex-1">
  <div className="truncate font-medium">{b.name}</div>
  <div className="truncate text-xs text-[var(--color-ink-3)]">
@@ -139,8 +140,8 @@ function StatusDot({ status }: { status: string }) {
  return <span aria-hidden className={`inline-block h-2 w-2 rounded-full ${cls}`} />;
 }
 
-function BrandChip({ palette }: { palette: Record<string, string> }) {
- const colors = [palette.primary, palette.accent, palette.secondary].filter(Boolean) as string[];
+function BrandChip({ palette }: { palette: BrandPalette }) {
+ const colors = [palette.primary, palette.accent, palette.secondary];
  if (colors.length === 0) {
  return <div className="h-10 w-10 rounded-[var(--radius-sm)] bg-[var(--color-paper-3)]" />;
  }

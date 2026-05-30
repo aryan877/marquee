@@ -9,10 +9,13 @@ import {
  VOICE_IDS,
  PALETTE_IDS,
  FONT_IDS,
+ BRAND_PALETTE_KEYS,
  DEFAULT_BRAND_STYLE,
+ isBrandHexColor,
  paletteById,
  voiceById,
  fontsById,
+ type BrandPalette,
  type VoiceId,
  type PaletteId,
  type FontId,
@@ -28,6 +31,7 @@ interface Draft {
  targetAudience: string;
  voiceId: VoiceId;
  paletteId: PaletteId;
+ palette: BrandPalette;
  fontsId: FontId;
 }
 
@@ -39,10 +43,19 @@ const EMPTY: Draft = {
  targetAudience: '',
  voiceId: DEFAULT_BRAND_STYLE.voiceId,
  paletteId: DEFAULT_BRAND_STYLE.paletteId,
+ palette: paletteById(DEFAULT_BRAND_STYLE.paletteId).colors,
  fontsId: DEFAULT_BRAND_STYLE.fontsId,
 };
 
 const STEPS = ['Brand', 'Voice', 'Look', 'Review'] as const;
+const PALETTE_KEYS = BRAND_PALETTE_KEYS;
+const PALETTE_LABELS: Record<typeof PALETTE_KEYS[number], string> = {
+ bg: 'Background',
+ fg: 'Text',
+ primary: 'Primary',
+ secondary: 'Secondary',
+ accent: 'Accent',
+};
 const VOICE_ID_SET = new Set<VoiceId>(VOICE_IDS);
 const PALETTE_ID_SET = new Set<PaletteId>(PALETTE_IDS);
 const FONT_ID_SET = new Set<FontId>(FONT_IDS);
@@ -54,7 +67,7 @@ export function OnboardingWizard() {
  const [error, setError] = useState<string | null>(null);
  const [pending, start] = useTransition();
 
- const palette = paletteById(draft.paletteId);
+ const palettePreset = paletteById(draft.paletteId);
  const voice = voiceById(draft.voiceId);
  const fonts = fontsById(draft.fontsId);
 
@@ -63,6 +76,10 @@ export function OnboardingWizard() {
 
  async function submit() {
  setError(null);
+ if (!isValidPalette(draft.palette)) {
+ setError('Use valid 6-digit hex colors for the brand palette');
+ return;
+ }
  start(async () => {
  const res = await fetch('/api/brands', {
  method: 'POST',
@@ -74,7 +91,7 @@ export function OnboardingWizard() {
  industry: draft.industry.trim() || undefined,
  target_audience: draft.targetAudience.trim() || undefined,
  voice: { tone: voice.label, sample_lines: [voice.sample] },
- palette: palette.colors,
+ palette: draft.palette,
  fonts: { heading: fonts.heading, body: fonts.body },
  }),
  });
@@ -118,7 +135,7 @@ export function OnboardingWizard() {
  {STEPS[step] === 'Brand' && <BrandStep draft={draft} setDraft={setDraft} />}
  {STEPS[step] === 'Voice' && <VoiceStep draft={draft} setDraft={setDraft} />}
  {STEPS[step] === 'Look' && <LookStep draft={draft} setDraft={setDraft} />}
- {STEPS[step] === 'Review' && <ReviewStep draft={draft} palette={palette} voice={voice} fonts={fonts} />}
+ {STEPS[step] === 'Review' && <ReviewStep draft={draft} paletteName={palettePreset.name} voice={voice} fonts={fonts} />}
  </motion.div>
  </AnimatePresence>
  </div>
@@ -159,9 +176,9 @@ export function OnboardingWizard() {
 
  <aside
  className="relative hidden overflow-hidden border-l border-[var(--color-border)] lg:block"
- style={{ background: palette.colors.bg, color: palette.colors.fg }}
+ style={{ background: draft.palette.bg, color: draft.palette.fg }}
  >
- <PreviewCard draft={draft} palette={palette} voice={voice} fonts={fonts} />
+ <PreviewCard draft={draft} palette={draft.palette} paletteName={palettePreset.name} voice={voice} fonts={fonts} />
  </aside>
  </div>
  );
@@ -243,6 +260,7 @@ function BrandStep({ draft, setDraft }: { draft: Draft; setDraft: (d: Draft) => 
 }
 
 function applyBrandSuggestion(current: Draft, suggestion: Record<string, unknown>): Draft {
+ const paletteId = presetSuggestion(suggestion.paletteId, PALETTE_ID_SET, current.paletteId);
  return {
  ...current,
  name:           textSuggestion(suggestion.name, current.name),
@@ -251,7 +269,8 @@ function applyBrandSuggestion(current: Draft, suggestion: Record<string, unknown
  targetAudience: textSuggestion(suggestion.targetAudience, current.targetAudience),
  description:    textSuggestion(suggestion.description, current.description),
  voiceId:        presetSuggestion(suggestion.voiceId, VOICE_ID_SET, current.voiceId),
- paletteId:      presetSuggestion(suggestion.paletteId, PALETTE_ID_SET, current.paletteId),
+ paletteId,
+ palette:        paletteId === current.paletteId ? current.palette : paletteById(paletteId).colors,
  fontsId:        presetSuggestion(suggestion.fontsId, FONT_ID_SET, current.fontsId),
  };
 }
@@ -262,6 +281,16 @@ function textSuggestion(value: unknown, fallback: string) {
 
 function presetSuggestion<T extends string>(value: unknown, allowed: ReadonlySet<T>, fallback: T): T {
  return typeof value === 'string' && allowed.has(value as T) ? value as T : fallback;
+}
+
+function normalizeHexInput(value: string) {
+ const next = value.trim().toUpperCase();
+ if (!next) return '#';
+ return next.startsWith('#') ? next.slice(0, 7) : `#${next.slice(0, 6)}`;
+}
+
+function isValidPalette(palette: BrandPalette) {
+ return PALETTE_KEYS.every((key) => isBrandHexColor(palette[key]));
 }
 
 function VoiceStep({ draft, setDraft }: { draft: Draft; setDraft: (d: Draft) => void }) {
@@ -290,6 +319,10 @@ function VoiceStep({ draft, setDraft }: { draft: Draft; setDraft: (d: Draft) => 
 }
 
 function LookStep({ draft, setDraft }: { draft: Draft; setDraft: (d: Draft) => void }) {
+ function setPaletteColor(key: keyof BrandPalette, value: string) {
+ setDraft({ ...draft, palette: { ...draft.palette, [key]: value } });
+ }
+
  return (
  <div className="space-y-8">
  <div>
@@ -300,7 +333,7 @@ function LookStep({ draft, setDraft }: { draft: Draft; setDraft: (d: Draft) => v
  return (
  <button
  key={p.id}
- onClick={() => setDraft({ ...draft, paletteId: p.id })}
+ onClick={() => setDraft({ ...draft, paletteId: p.id, palette: p.colors })}
  className={cn(
  'rounded-[var(--radius-md)] border p-4 text-left transition-colors',
  active ? 'border-[var(--color-ink)]' : 'border-[var(--color-border)] hover:bg-[var(--color-paper-2)]',
@@ -319,6 +352,28 @@ function LookStep({ draft, setDraft }: { draft: Draft; setDraft: (d: Draft) => v
  </button>
  );
  })}
+ </div>
+ <div className="mt-4 rounded-[var(--radius-md)] border border-[var(--color-border)] p-4">
+ <div className="grid gap-3 sm:grid-cols-2">
+ {PALETTE_KEYS.map((key) => (
+ <label key={key} className="grid grid-cols-[auto_1fr] items-center gap-3">
+ <input
+ type="color"
+ value={isBrandHexColor(draft.palette[key]) ? draft.palette[key] : '#000000'}
+ onChange={(e) => setPaletteColor(key, e.target.value.toUpperCase())}
+ className="h-10 w-10 cursor-pointer rounded-[var(--radius-xs)] border border-[var(--color-border)] bg-transparent p-0.5"
+ />
+ <span>
+ <span className="font-mono text-[10px] tracking-[0.16em] text-[var(--color-ink-3)]">{PALETTE_LABELS[key]}</span>
+ <input
+ value={draft.palette[key]}
+ onChange={(e) => setPaletteColor(key, normalizeHexInput(e.target.value))}
+ className="mt-1 w-full rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 font-mono text-xs text-[var(--color-ink)] focus:border-[var(--color-ink)] focus:outline-none"
+ />
+ </span>
+ </label>
+ ))}
+ </div>
  </div>
  </div>
  <div>
@@ -352,12 +407,12 @@ function LookStep({ draft, setDraft }: { draft: Draft; setDraft: (d: Draft) => v
 
 function ReviewStep({
  draft,
- palette,
+ paletteName,
  voice,
  fonts,
 }: {
  draft: Draft;
- palette: typeof PALETTE_PRESETS[number];
+ paletteName: string;
  voice: typeof VOICE_PRESETS[number];
  fonts: typeof FONT_PAIRS[number];
 }) {
@@ -368,7 +423,7 @@ function ReviewStep({
  <Row k="Industry" v={draft.industry || '—'} />
  <Row k="Audience" v={draft.targetAudience || '—'} />
  <Row k="Voice" v={voice.label} />
- <Row k="Palette" v={palette.name} />
+ <Row k="Palette" v={paletteName} />
  <Row k="Type" v={`${fonts.heading} · ${fonts.body}`} />
  <Row k="About" v={draft.description || '—'} full />
  </dl>
@@ -430,18 +485,20 @@ function FieldStyle() {
 function PreviewCard({
  draft,
  palette,
+ paletteName,
  voice,
  fonts,
 }: {
  draft: Draft;
- palette: typeof PALETTE_PRESETS[number];
+ palette: BrandPalette;
+ paletteName: string;
  voice: typeof VOICE_PRESETS[number];
  fonts: typeof FONT_PAIRS[number];
 }) {
  return (
  <div className="absolute inset-0 flex flex-col p-10">
  <div className="font-mono text-[10px] tracking-[0.2em] opacity-60">
- Preview · {palette.name}
+ Preview · {paletteName}
  </div>
  <div className="flex flex-1 flex-col justify-center">
  <div
@@ -451,7 +508,7 @@ function PreviewCard({
  {draft.name || 'Your Brand'}
  </div>
  <div
- style={{ fontFamily: fonts.body, color: palette.colors.secondary }}
+ style={{ fontFamily: fonts.body, color: palette.secondary }}
  className="mt-4 text-base"
  >
  &ldquo;{voice.sample}&rdquo;
@@ -461,7 +518,7 @@ function PreviewCard({
  <span
  key={k}
  className="rounded-full px-3 py-1 text-xs"
- style={{ background: palette.colors[k], color: palette.colors.bg }}
+ style={{ background: palette[k], color: palette.bg }}
  >
  {k}
  </span>

@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-interface BrandPalette {
+export interface BrandPalette {
   primary: string;
   secondary: string;
   accent: string;
@@ -8,11 +8,13 @@ interface BrandPalette {
   fg: string;
 }
 
-interface PaletteOption {
+export interface PaletteOption {
   id: string;
   name: string;
   colors: BrandPalette;
 }
+
+export const BRAND_PALETTE_KEYS = ['bg', 'fg', 'primary', 'secondary', 'accent'] as const satisfies readonly (keyof BrandPalette)[];
 
 type IdTuple<T extends readonly { readonly id: string }[]> = {
   readonly [K in keyof T]: T[K] extends { readonly id: infer Id extends string } ? Id : never;
@@ -77,6 +79,24 @@ export const DEFAULT_BRAND_STYLE = {
 
 export function paletteById(id: PaletteId) {
   return PALETTE_PRESETS.find((p) => p.id === id) ?? PALETTE_PRESETS[0];
+}
+
+export function isBrandHexColor(value: unknown): value is string {
+  return typeof value === 'string' && /^#[0-9A-F]{6}$/i.test(value);
+}
+
+export function coerceBrandPalette(value: unknown, fallback: BrandPalette = paletteById(DEFAULT_BRAND_STYLE.paletteId).colors): BrandPalette {
+  const candidate = value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Partial<Record<keyof BrandPalette, unknown>>
+    : {};
+
+  return {
+    bg:        isBrandHexColor(candidate.bg)        ? candidate.bg        : fallback.bg,
+    fg:        isBrandHexColor(candidate.fg)        ? candidate.fg        : fallback.fg,
+    primary:   isBrandHexColor(candidate.primary)   ? candidate.primary   : fallback.primary,
+    secondary: isBrandHexColor(candidate.secondary) ? candidate.secondary : fallback.secondary,
+    accent:    isBrandHexColor(candidate.accent)    ? candidate.accent    : fallback.accent,
+  };
 }
 
 export function voiceById(id: VoiceId) {

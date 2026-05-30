@@ -7,11 +7,6 @@ export type Json =
   | Json[]
 
 export type Database = {
-  // Allows to automatically instantiate createClient with right options
-  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
-  __InternalSupabase: {
-    PostgrestVersion: "14.5"
-  }
   public: {
     Tables: {
       _prisma_migrations: {
@@ -847,6 +842,37 @@ export type Database = {
       }
       sweep_autopilot: { Args: never; Returns: number }
       sweep_orphan_jobs: { Args: { p_stall_window?: string }; Returns: number }
+      update_brand: {
+        Args: {
+          p_brand_id: string
+          p_description?: string
+          p_fonts?: Json
+          p_guidelines?: Json
+          p_handle?: string
+          p_industry?: string
+          p_is_active?: boolean
+          p_logo_url?: string
+          p_name: string
+          p_palette?: Json
+          p_target_audience?: string
+          p_voice?: Json
+        }
+        Returns: {
+          created_at: string
+          description: string
+          fonts: Json
+          guidelines: Json
+          handle: string
+          id: string
+          industry: string
+          is_active: boolean
+          logo_url: string
+          name: string
+          palette: Json
+          target_audience: string
+          voice: Json
+        }[]
+      }
       update_content_job_status: {
         Args: {
           p_error_message?: string

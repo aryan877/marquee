@@ -42,6 +42,10 @@ export const CreateBrandSchema = z.object({
   guidelines:      BrandGuidelinesSchema.optional(),
 });
 
+export const UpdateBrandSchema = CreateBrandSchema.extend({
+  is_active: z.boolean().optional(),
+});
+
 const SocialPlatformSchema = z.enum([
   'INSTAGRAM',
   'TIKTOK',
