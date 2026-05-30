@@ -2,8 +2,8 @@ import Link from 'next/link';
 import type { Database } from '@marquee/db';
 import { coerceBrandPalette, type BrandPalette } from '@marquee/shared/palettes';
 
-type Brand = Database['public']['Functions']['get_brands']['Returns'][number];
-type Job = Database['public']['Functions']['get_content_jobs']['Returns'][number];
+type Brand = Database['public']['Functions']['get_brands_page']['Returns'][number];
+type Job = Database['public']['Functions']['get_content_jobs_page']['Returns'][number];
 type Profile = Database['public']['Functions']['get_profile']['Returns'][number];
 
 export function Dashboard({

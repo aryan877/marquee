@@ -37,7 +37,7 @@ export function TwitterConnect({ brandId }: { brandId: string }) {
 
   return (
     <div className="mt-4 space-y-3">
-      <div className="rounded-[var(--radius-sm)] border border-[oklch(55%_0.12_75)] bg-[oklch(88%_0.08_82)] px-3 py-2 text-xs font-medium text-[oklch(32%_0.08_70)]">
+      <div className="rounded-[var(--radius-sm)] border border-[var(--color-border-strong)] bg-[var(--color-paper-2)] px-3 py-2 text-xs font-medium text-[var(--color-ink)]">
         Cost warning: X switched to pay-per-use Feb 2026. ~$0.015 per text post, ~$0.20 per post containing a link. A test run with 5 posts = $1+ if any include URLs.
       </div>
       <div className="grid gap-3 sm:grid-cols-2">

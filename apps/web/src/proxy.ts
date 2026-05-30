@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
 
 const PROTECTED = ['/app', '/admin'];
-const AUTH_REDIRECT_IF_SIGNED_IN = ['/login', '/signup'];
+const AUTH_REDIRECT_IF_SIGNED_IN = ['/', '/login', '/signup'];
 
 export async function proxy(request: NextRequest) {
   let response = NextResponse.next({ request });
@@ -30,7 +30,7 @@ export async function proxy(request: NextRequest) {
   if (!user && PROTECTED.some((p) => path.startsWith(p))) {
     const url = request.nextUrl.clone();
     url.pathname = '/login';
-    url.searchParams.set('next', path);
+    url.searchParams.set('next', `${path}${request.nextUrl.search}`);
     return NextResponse.redirect(url);
   }
 

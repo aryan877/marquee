@@ -3,15 +3,34 @@
 -- Purpose: quota-touching RPCs. service_role only.
 --
 -- Functions:
+--   get_profile_for_job_submit(user_id)
 --   submit_content_job(...)  → uuid   atomic quota deduct + insert + enqueue
 --   refund_content_job(...)  → void   idempotent — marks FAILED + refunds
 --   create_brand(...)        → uuid   insert + sane defaults
+--   get_brand_owner(brand_id)
 --   upsert_social_account()  → uuid   used by /api/social/connect
 --
 -- Trust boundary: only Next.js route handlers (server-side) hit these.
 -- They auth the JWT, validate inputs against @marquee/shared/billing, then
 -- invoke the RPC with service_role.
 -- =============================================================================
+
+DROP FUNCTION IF EXISTS public.get_profile_for_job_submit(UUID);
+CREATE FUNCTION public.get_profile_for_job_submit(p_user_id UUID)
+RETURNS TABLE (
+  plan      TEXT,
+  banned_at TIMESTAMPTZ
+)
+LANGUAGE sql STABLE SECURITY DEFINER
+SET search_path = ''
+AS $$
+  SELECT plan, banned_at
+  FROM public.profiles
+  WHERE id = p_user_id;
+$$;
+
+REVOKE ALL ON FUNCTION public.get_profile_for_job_submit(UUID) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.get_profile_for_job_submit(UUID) TO service_role;
 
 -- ─── submit_content_job ───
 DROP FUNCTION IF EXISTS public.submit_content_job(UUID, UUID, public."ContentType", TEXT, public."SocialPlatform"[], INT, UUID);
@@ -212,6 +231,23 @@ REVOKE ALL ON FUNCTION public.create_brand(UUID, TEXT, TEXT, TEXT, TEXT, TEXT, J
   FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.create_brand(UUID, TEXT, TEXT, TEXT, TEXT, TEXT, JSONB, JSONB, JSONB, TEXT, JSONB)
   TO service_role;
+
+DROP FUNCTION IF EXISTS public.get_brand_owner(UUID);
+CREATE FUNCTION public.get_brand_owner(p_brand_id UUID)
+RETURNS TABLE (
+  id      UUID,
+  user_id UUID
+)
+LANGUAGE sql STABLE SECURITY DEFINER
+SET search_path = ''
+AS $$
+  SELECT id, user_id
+  FROM public.brands
+  WHERE id = p_brand_id;
+$$;
+
+REVOKE ALL ON FUNCTION public.get_brand_owner(UUID) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.get_brand_owner(UUID) TO service_role;
 
 -- ─── upsert_social_account ───
 DROP FUNCTION IF EXISTS public.upsert_social_account(UUID, public."SocialPlatform", TEXT, BYTEA);

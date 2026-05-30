@@ -6,9 +6,10 @@ import { AiFillButton } from '@/components/app/ai-fill-button';
 import { PLATFORM_META, isLiveSocialPlatform } from '@/components/marquee/platform-icons';
 import { LIVE_SOCIAL_PLATFORMS } from '@marquee/shared/schemas';
 import { coerceBrandPalette } from '@marquee/shared/palettes';
+import type { BrandListPage } from '@/hooks/queries';
+import { usePaginatedBrands } from '@/hooks/queries';
 import type { Database } from '@marquee/db';
 
-type Brand = Database['public']['Functions']['get_brands']['Returns'][number];
 type ContentType = Database['public']['Enums']['ContentType'];
 type SocialPlatform = Database['public']['Enums']['SocialPlatform'];
 
@@ -25,8 +26,10 @@ const PLATFORMS: SocialPlatform[] = [
  'YOUTUBE', 'FACEBOOK', 'THREADS', 'PINTEREST', 'GOOGLE_BUSINESS',
 ];
 
-export function GenerateForm({ brands }: { brands: Brand[] }) {
+export function GenerateForm({ initialBrandsPage }: { initialBrandsPage: BrandListPage }) {
  const router = useRouter();
+ const brandsQuery = usePaginatedBrands({ initialPage: initialBrandsPage });
+ const brands = brandsQuery.data?.pages.flatMap((page) => page.items) ?? [];
  const [brandId, setBrandId] = useState(brands[0]?.id ?? '');
  const [type, setType] = useState<ContentType>('POSTER');
  const [topic, setTopic] = useState('');
@@ -102,6 +105,16 @@ export function GenerateForm({ brands }: { brands: Brand[] }) {
  );
  })}
  </div>
+ {brandsQuery.hasNextPage && (
+ <button
+ type="button"
+ onClick={() => void brandsQuery.fetchNextPage()}
+ disabled={brandsQuery.isFetchingNextPage}
+ className="mt-3 rounded-full border border-[var(--color-border-strong)] px-4 py-2 text-sm text-[var(--color-ink-2)] hover:bg-[var(--color-paper-2)] disabled:opacity-50"
+ >
+ {brandsQuery.isFetchingNextPage ? 'Loading...' : 'Load more brands'}
+ </button>
+ )}
  </section>
 
  <section>

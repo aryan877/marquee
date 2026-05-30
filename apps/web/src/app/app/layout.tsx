@@ -1,4 +1,5 @@
 import { redirect } from 'next/navigation';
+import type { CSSProperties } from 'react';
 import { requireUser, getSupabaseServer } from '@/lib/supabase/server';
 import { AppShell } from '@/components/app/app-shell';
 import { FreeLaunchBanner } from '@/components/app/free-launch-banner';
@@ -15,7 +16,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   return (
     <AppShell user={{ email: user.email ?? '', plan: profile?.plan ?? 'FREE' }}>
       {!isFounder && <FreeLaunchBanner />}
-      {children}
+      <div style={{ '--app-banner-height': isFounder ? '0px' : '41px' } as CSSProperties}>
+        {children}
+      </div>
     </AppShell>
   );
 }

@@ -1,11 +1,13 @@
 import { redirect } from 'next/navigation';
+import { pageFromRows } from '@/lib/api/pagination';
 import { getSupabaseServer } from '@/lib/supabase/server';
 import { GenerateForm } from '@/components/app/generate-form';
 
 export default async function GeneratePage() {
  const sb = await getSupabaseServer();
- const { data: brands } = await sb.rpc('get_brands', { p_limit: 50 });
- if (!brands || brands.length === 0) redirect('/app/onboarding');
+ const { data: brands } = await sb.rpc('get_brands_page', { p_limit: 20 });
+ const initialBrandsPage = pageFromRows(brands, 20);
+ if (initialBrandsPage.items.length === 0) redirect('/app/onboarding');
 
  return (
  <div className="px-6 py-10 md:px-10 md:py-14">
@@ -15,7 +17,7 @@ export default async function GeneratePage() {
  <p className="mt-3 text-[var(--color-ink-2)]">
  Pick a brand, pick what you want made, pick where it goes. The agent runs in front of you.
  </p>
- <GenerateForm brands={brands ?? []} />
+ <GenerateForm initialBrandsPage={initialBrandsPage} />
  </div>
  </div>
  );

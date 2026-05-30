@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { BskyAgent } from '@atproto/api';
 import { requireUser, getSupabaseAdmin } from '@/lib/supabase/server';
 import { encrypt } from '@/lib/crypto';
+import { isBrandOwner } from '@/lib/brand-owner';
 
 const Body = z.object({
   brand_id:      z.string().uuid(),
@@ -21,12 +22,7 @@ export async function POST(request: NextRequest) {
   }
 
   const admin = getSupabaseAdmin();
-  const { data: brand } = await admin
-    .from('brands')
-    .select('id, user_id')
-    .eq('id', parsed.data.brand_id)
-    .single();
-  if (!brand || brand.user_id !== user.id) {
+  if (!(await isBrandOwner(admin, parsed.data.brand_id, user.id))) {
     return NextResponse.json({ error: 'brand not found' }, { status: 404 });
   }
 

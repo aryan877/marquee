@@ -41,7 +41,7 @@ marquee/
 ├── packages/
 │   ├── db/                 # Prisma schema, generated types, RPC client wrapper
 │   └── shared/             # billing, palettes, schemas (zod), constants, progress step taxonomy
-├── supabase/migrations/    # RLS, RPCs, triggers, PGMQ queue, pg_cron (numbered 00–80)
+├── supabase/migrations/    # Timestamped, feature-owned RLS/RPC/trigger/PGMQ/cron SQL
 └── .env                    # single source of truth, copied to apps/web/.env.local
 ```
 
@@ -70,8 +70,9 @@ Pattern: `Ref<HashMap<jobId, PubSub.dropping(64)>>` keyed by job_id. Per-connect
 
 ### Prisma owns table DDL. Supabase migrations own everything else.
 - Tables, columns, indexes, FKs → `packages/db/prisma/schema.prisma`
-- RLS, grants, RPCs, triggers, PGMQ queues, pg_cron jobs → `supabase/migrations/*.sql` (numbered 00–80)
-- Never declare the `auth` schema in Prisma. Bridge from `auth.users` lives as triggers in `10_rls_and_triggers.sql`.
+- RLS, grants, RPCs, triggers, PGMQ queues, pg_cron jobs → timestamped feature files in `supabase/migrations/*.sql`
+- Never declare the `auth` schema in Prisma. Bridge from `auth.users` lives as triggers in the `rls_and_triggers` migration.
+- Keep SQL in its owning feature file. Do not add throwaway `98_*`/`99_*` RPC files unless explicitly requested; apply the matching SQL through the marquee Supabase MCP and then regenerate DB types.
 
 Apply order for local/dev changes:
 ```bash
@@ -98,6 +99,11 @@ type ContentType = Database['public']['Enums']['ContentType'];
 
 Server: `getSupabaseServer()` for user-scoped reads, `getSupabaseAdmin()` (service role) for mutations.
 Browser: `getSupabaseBrowser()`. Pass `<Database>` generic — wiring already does this.
+
+### Frontend data flow
+TanStack Query is provided once in `apps/web/src/app/providers.tsx`. Paginated list hooks live in `apps/web/src/hooks/queries/*`; list pages should use those hooks plus API routes instead of server-dumping large RPC results.
+
+Validation for API search params and cursors lives in `apps/web/src/lib/api/*` with Zod. Lists use cursor RPCs such as `get_brands_page`, `get_content_jobs_page`, and `get_campaigns_page`; type items from generated function returns.
 
 ### Brand style presets
 Brand palettes, voice presets, font pairs, their IDs, Zod ID schemas, default style, and lookup helpers live in `packages/shared/src/palettes.ts`. UI, API routes, worker scripts, and render paths must import from there instead of hard-coding preset IDs, colors, voice labels, or font names.

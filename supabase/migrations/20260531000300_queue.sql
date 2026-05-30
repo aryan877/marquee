@@ -3,7 +3,7 @@
 -- Purpose: PGMQ queue the worker polls + priority dequeue.
 --
 -- Queue: content_jobs
---   Producer: submit_content_job (40_server_submit_refund.sql) via pgmq.send
+--   Producer: submit_content_job (server_submit_refund migration) via pgmq.send
 --   Consumer: apps/worker via read_next_content_job(vt)
 --             Worker extends visibility with pgmq.set_vt while processing.
 --             Terminal outcomes archive the message with pgmq.archive.

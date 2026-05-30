@@ -1,6 +1,8 @@
 import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
+import { pageFromRows } from '@/lib/api/pagination';
 import { getSupabaseServer } from '@/lib/supabase/server';
+import { JobsHistoryList } from '@/components/app/jobs-history-list';
 import { BrandEditor } from './brand-editor';
 
 export default async function BrandDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -15,7 +17,8 @@ export default async function BrandDetailPage({ params }: { params: Promise<{ id
 
   const guide   = (brand.guidelines ?? {}) as { do?: string[]; dont?: string[]; vocabulary?: string[]; hashtags?: string[] };
 
-  const { data: jobs } = await sb.rpc('get_content_jobs', { p_brand_id: id, p_limit: 12 });
+  const { data: jobs } = await sb.rpc('get_content_jobs_page', { p_brand_id: id, p_limit: 20 });
+  const initialJobsPage = pageFromRows(jobs, 20);
 
   return (
     <div className="px-6 py-10 md:px-10 md:py-14">
@@ -55,28 +58,11 @@ export default async function BrandDetailPage({ params }: { params: Promise<{ id
 
         <section className="mt-12">
           <SectionLabel>Recent posts</SectionLabel>
-          {!jobs || jobs.length === 0 ? (
-            <p className="mt-3 text-sm text-[var(--color-ink-3)]">No posts yet for this brand.</p>
-          ) : (
-            <ul className="mt-3 divide-y divide-[var(--color-border)] rounded-[var(--radius-lg)] border border-[var(--color-border)] surface">
-              {jobs.map((j) => (
-                <li key={j.id}>
-                  <Link
-                    href={`/app/jobs/${j.id}`}
-                    className="flex items-center justify-between gap-4 px-5 py-4 transition-colors hover:bg-[var(--color-paper-2)]"
-                  >
-                    <div className="min-w-0 flex-1">
-                      <div className="font-medium">{j.topic ?? 'Untitled'}</div>
-                      <div className="mt-1 text-xs text-[var(--color-ink-3)]">
-                        {j.content_type} · {new Date(j.created_at).toLocaleString()}
-                      </div>
-                    </div>
-                    <span className="font-mono text-xs tracking-wider text-[var(--color-ink-3)]">{j.status}</span>
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          )}
+          <JobsHistoryList
+            initialPage={initialJobsPage}
+            brandId={id}
+            emptyText="No posts yet for this brand."
+          />
         </section>
       </div>
     </div>

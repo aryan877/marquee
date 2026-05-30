@@ -8,11 +8,9 @@ export async function POST() {
   if (!user.email) return NextResponse.json({ error: 'no email on account' }, { status: 400 });
 
   const admin = getSupabaseAdmin();
-  const { data: profile } = await admin
-    .from('profiles')
-    .select('username, dodo_customer_id')
-    .eq('id', user.id)
-    .single();
+  const { data: profileRows, error: profileErr } = await admin.rpc('get_profile_for_checkout', { p_user_id: user.id });
+  if (profileErr) return NextResponse.json({ error: profileErr.message }, { status: 500 });
+  const profile = profileRows?.[0] ?? null;
 
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000';
   const dodo = getDodo();

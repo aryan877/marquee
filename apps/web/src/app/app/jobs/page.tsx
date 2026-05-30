@@ -1,16 +1,16 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
+import { pageFromRows } from '@/lib/api/pagination';
 import { getSupabaseServer } from '@/lib/supabase/server';
-import type { Database } from '@marquee/db';
-
-type Job = Database['public']['Functions']['get_content_jobs']['Returns'][number];
+import { JobsHistoryList } from '@/components/app/jobs-history-list';
 
 export default async function JobsPage() {
   const sb = await getSupabaseServer();
   const { data: { user } } = await sb.auth.getUser();
   if (!user) redirect('/login');
 
-  const { data: jobs } = await sb.rpc('get_content_jobs', { p_limit: 100 });
+  const { data } = await sb.rpc('get_content_jobs_page', { p_limit: 20 });
+  const initialPage = pageFromRows(data, 20);
 
   return (
     <div className="px-6 py-10 md:px-10 md:py-14">
@@ -30,47 +30,8 @@ export default async function JobsPage() {
           </Link>
         </div>
 
-        {!jobs || jobs.length === 0 ? (
-          <div className="mt-10 surface rounded-[var(--radius-lg)] border border-dashed border-[var(--color-border-strong)] p-12 text-center text-[var(--color-ink-3)]">
-            No posts yet. Hit Generate to make your first.
-          </div>
-        ) : (
-          <ul className="mt-10 divide-y divide-[var(--color-border)] rounded-[var(--radius-lg)] border border-[var(--color-border)] surface">
-            {jobs.map((j) => <JobRow key={j.id} job={j} />)}
-          </ul>
-        )}
+        <JobsHistoryList initialPage={initialPage} />
       </div>
     </div>
   );
-}
-
-function JobRow({ job: j }: { job: Job }) {
-  return (
-    <li>
-      <Link
-        href={`/app/jobs/${j.id}`}
-        className="flex items-center justify-between gap-4 px-5 py-4 transition-colors hover:bg-[var(--color-paper-2)]"
-      >
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2 text-sm">
-            <StatusDot status={j.status} />
-            <span className="font-medium">{j.topic ?? 'Untitled'}</span>
-          </div>
-          <div className="mt-1 truncate text-xs text-[var(--color-ink-3)]">
-            {j.content_type} · {(j.platforms ?? []).join(', ') || 'no platforms'} · {new Date(j.created_at).toLocaleString()}
-          </div>
-        </div>
-        <span className="font-mono text-xs tracking-wider text-[var(--color-ink-3)]">{j.status}</span>
-      </Link>
-    </li>
-  );
-}
-
-function StatusDot({ status }: { status: string }) {
-  const cls =
-    status === 'POSTED' ? 'bg-[var(--color-signal-good)]' :
-    status === 'FAILED' ? 'bg-[var(--color-signal-bad)]' :
-    status === 'REVIEW' ? 'bg-[var(--color-accent-strong)]' :
-    'bg-[var(--color-ink-3)] animate-pulse';
-  return <span aria-hidden className={`inline-block h-2 w-2 ${cls}`} />;
 }

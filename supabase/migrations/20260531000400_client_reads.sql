@@ -69,6 +69,45 @@ $$;
 REVOKE ALL ON FUNCTION public.get_brands(INT, TIMESTAMPTZ) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.get_brands(INT, TIMESTAMPTZ) TO authenticated, service_role;
 
+DROP FUNCTION IF EXISTS public.get_brands_page(INT, TIMESTAMPTZ, UUID);
+CREATE FUNCTION public.get_brands_page(
+  p_limit              INT         DEFAULT 20,
+  p_cursor_created_at  TIMESTAMPTZ DEFAULT NULL,
+  p_cursor_id          UUID        DEFAULT NULL
+)
+RETURNS TABLE (
+  id              UUID,
+  name            TEXT,
+  handle          TEXT,
+  description     TEXT,
+  industry        TEXT,
+  target_audience TEXT,
+  voice           JSONB,
+  palette         JSONB,
+  fonts           JSONB,
+  logo_url        TEXT,
+  guidelines      JSONB,
+  is_active       BOOLEAN,
+  created_at      TIMESTAMPTZ
+)
+LANGUAGE sql STABLE SECURITY DEFINER
+SET search_path = ''
+AS $$
+  SELECT id, name, handle, description, industry, target_audience,
+         voice, palette, fonts, logo_url, guidelines, is_active, created_at
+  FROM public.brands
+  WHERE user_id = (select auth.uid())
+    AND (
+      p_cursor_created_at IS NULL
+      OR (created_at, id) < (p_cursor_created_at, COALESCE(p_cursor_id, id))
+    )
+  ORDER BY created_at DESC, id DESC
+  LIMIT LEAST(GREATEST(p_limit, 1), 50) + 1;
+$$;
+
+REVOKE ALL ON FUNCTION public.get_brands_page(INT, TIMESTAMPTZ, UUID) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.get_brands_page(INT, TIMESTAMPTZ, UUID) TO authenticated, service_role;
+
 -- ─── get_brand (one row, scoped) ───
 DROP FUNCTION IF EXISTS public.get_brand(UUID);
 CREATE FUNCTION public.get_brand(p_brand_id UUID)
@@ -98,6 +137,28 @@ $$;
 
 REVOKE ALL ON FUNCTION public.get_brand(UUID) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.get_brand(UUID) TO authenticated, service_role;
+
+DROP FUNCTION IF EXISTS public.get_connected_social_accounts(UUID);
+CREATE FUNCTION public.get_connected_social_accounts(p_brand_id UUID)
+RETURNS TABLE (
+  platform  public."SocialPlatform",
+  handle    TEXT,
+  is_active BOOLEAN
+)
+LANGUAGE sql STABLE SECURITY DEFINER
+SET search_path = ''
+AS $$
+  SELECT s.platform, s.handle, s.is_active
+  FROM public.social_accounts s
+  JOIN public.brands b ON b.id = s.brand_id
+  WHERE s.brand_id = p_brand_id
+    AND s.is_active
+    AND b.user_id = (select auth.uid())
+  ORDER BY s.created_at ASC;
+$$;
+
+REVOKE ALL ON FUNCTION public.get_connected_social_accounts(UUID) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.get_connected_social_accounts(UUID) TO authenticated, service_role;
 
 -- ─── get_content_jobs (current user, paginated) ───
 DROP FUNCTION IF EXISTS public.get_content_jobs(UUID, INT, TIMESTAMPTZ);
@@ -137,6 +198,51 @@ $$;
 
 REVOKE ALL ON FUNCTION public.get_content_jobs(UUID, INT, TIMESTAMPTZ) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.get_content_jobs(UUID, INT, TIMESTAMPTZ) TO authenticated, service_role;
+
+DROP FUNCTION IF EXISTS public.get_content_jobs_page(UUID, INT, TIMESTAMPTZ, UUID);
+CREATE FUNCTION public.get_content_jobs_page(
+  p_brand_id           UUID        DEFAULT NULL,
+  p_limit              INT         DEFAULT 20,
+  p_cursor_created_at  TIMESTAMPTZ DEFAULT NULL,
+  p_cursor_id          UUID        DEFAULT NULL
+)
+RETURNS TABLE (
+  id            UUID,
+  brand_id      UUID,
+  brand_name    TEXT,
+  status        public."ContentJobStatus",
+  content_type  public."ContentType",
+  topic         TEXT,
+  caption       TEXT,
+  platforms     public."SocialPlatform"[],
+  output_url    TEXT,
+  thumbnail_url TEXT,
+  posted_at     TIMESTAMPTZ,
+  approved_at   TIMESTAMPTZ,
+  error_message TEXT,
+  created_at    TIMESTAMPTZ,
+  completed_at  TIMESTAMPTZ
+)
+LANGUAGE sql STABLE SECURITY DEFINER
+SET search_path = ''
+AS $$
+  SELECT j.id, j.brand_id, b.name AS brand_name, j.status, j.content_type, j.topic,
+         j.caption, j.platforms, j.output_url, j.thumbnail_url, j.posted_at,
+         j.approved_at, j.error_message, j.created_at, j.completed_at
+  FROM public.content_jobs j
+  JOIN public.brands b ON b.id = j.brand_id
+  WHERE j.user_id = (select auth.uid())
+    AND (p_brand_id IS NULL OR j.brand_id = p_brand_id)
+    AND (
+      p_cursor_created_at IS NULL
+      OR (j.created_at, j.id) < (p_cursor_created_at, COALESCE(p_cursor_id, j.id))
+    )
+  ORDER BY j.created_at DESC, j.id DESC
+  LIMIT LEAST(GREATEST(p_limit, 1), 50) + 1;
+$$;
+
+REVOKE ALL ON FUNCTION public.get_content_jobs_page(UUID, INT, TIMESTAMPTZ, UUID) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.get_content_jobs_page(UUID, INT, TIMESTAMPTZ, UUID) TO authenticated, service_role;
 
 -- ─── get_content_job (one row, scoped) ───
 DROP FUNCTION IF EXISTS public.get_content_job(UUID);
@@ -230,3 +336,44 @@ $$;
 
 REVOKE ALL ON FUNCTION public.get_campaigns(INT) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.get_campaigns(INT) TO authenticated, service_role;
+
+DROP FUNCTION IF EXISTS public.get_campaigns_page(INT, TIMESTAMPTZ, UUID);
+CREATE FUNCTION public.get_campaigns_page(
+  p_limit              INT         DEFAULT 20,
+  p_cursor_created_at  TIMESTAMPTZ DEFAULT NULL,
+  p_cursor_id          UUID        DEFAULT NULL
+)
+RETURNS TABLE (
+  id              UUID,
+  brand_id        UUID,
+  brand_name      TEXT,
+  name            TEXT,
+  content_type    public."ContentType",
+  platforms       public."SocialPlatform"[],
+  cron_expression TEXT,
+  topic_pool      TEXT[],
+  active          BOOLEAN,
+  autopilot       BOOLEAN,
+  auto_publish    BOOLEAN,
+  next_run_at     TIMESTAMPTZ,
+  created_at      TIMESTAMPTZ
+)
+LANGUAGE sql STABLE SECURITY DEFINER
+SET search_path = ''
+AS $$
+  SELECT c.id, c.brand_id, b.name AS brand_name, c.name, c.content_type, c.platforms,
+         c.cron_expression, c.topic_pool, c.active, c.autopilot,
+         c.auto_publish, c.next_run_at, c.created_at
+  FROM public.campaigns c
+  JOIN public.brands b ON b.id = c.brand_id
+  WHERE b.user_id = (select auth.uid())
+    AND (
+      p_cursor_created_at IS NULL
+      OR (c.created_at, c.id) < (p_cursor_created_at, COALESCE(p_cursor_id, c.id))
+    )
+  ORDER BY c.created_at DESC, c.id DESC
+  LIMIT LEAST(GREATEST(p_limit, 1), 50) + 1;
+$$;
+
+REVOKE ALL ON FUNCTION public.get_campaigns_page(INT, TIMESTAMPTZ, UUID) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.get_campaigns_page(INT, TIMESTAMPTZ, UUID) TO authenticated, service_role;

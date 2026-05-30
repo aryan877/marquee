@@ -624,8 +624,37 @@ export type Database = {
           voice: Json
         }[]
       }
+      get_brand_owner: {
+        Args: { p_brand_id: string }
+        Returns: {
+          id: string
+          user_id: string
+        }[]
+      }
       get_brands: {
         Args: { p_cursor?: string; p_limit?: number }
+        Returns: {
+          created_at: string
+          description: string
+          fonts: Json
+          guidelines: Json
+          handle: string
+          id: string
+          industry: string
+          is_active: boolean
+          logo_url: string
+          name: string
+          palette: Json
+          target_audience: string
+          voice: Json
+        }[]
+      }
+      get_brands_page: {
+        Args: {
+          p_cursor_created_at?: string
+          p_cursor_id?: string
+          p_limit?: number
+        }
         Returns: {
           created_at: string
           description: string
@@ -659,6 +688,44 @@ export type Database = {
           topic_pool: string[]
         }[]
       }
+      get_campaigns_page: {
+        Args: {
+          p_cursor_created_at?: string
+          p_cursor_id?: string
+          p_limit?: number
+        }
+        Returns: {
+          active: boolean
+          auto_publish: boolean
+          autopilot: boolean
+          brand_id: string
+          brand_name: string
+          content_type: Database["public"]["Enums"]["ContentType"]
+          created_at: string
+          cron_expression: string
+          id: string
+          name: string
+          next_run_at: string
+          platforms: Database["public"]["Enums"]["SocialPlatform"][]
+          topic_pool: string[]
+        }[]
+      }
+      get_connected_social_accounts: {
+        Args: { p_brand_id: string }
+        Returns: {
+          handle: string
+          is_active: boolean
+          platform: Database["public"]["Enums"]["SocialPlatform"]
+        }[]
+      }
+      get_connected_social_accounts_for_job: {
+        Args: { p_job_id: string }
+        Returns: {
+          handle: string
+          is_active: boolean
+          platform: Database["public"]["Enums"]["SocialPlatform"]
+        }[]
+      }
       get_content_job: {
         Args: { p_job_id: string }
         Returns: {
@@ -680,6 +747,18 @@ export type Database = {
           status: Database["public"]["Enums"]["ContentJobStatus"]
           thumbnail_url: string
           topic: string
+        }[]
+      }
+      get_content_job_for_approval: {
+        Args: { p_job_id: string }
+        Returns: {
+          brand_id: string
+          caption: string
+          id: string
+          output_url: string
+          platforms: Database["public"]["Enums"]["SocialPlatform"][]
+          status: Database["public"]["Enums"]["ContentJobStatus"]
+          user_id: string
         }[]
       }
       get_content_job_full: {
@@ -709,6 +788,31 @@ export type Database = {
           created_at: string
           error_message: string
           hashtags: string[]
+          id: string
+          output_url: string
+          platforms: Database["public"]["Enums"]["SocialPlatform"][]
+          posted_at: string
+          status: Database["public"]["Enums"]["ContentJobStatus"]
+          thumbnail_url: string
+          topic: string
+        }[]
+      }
+      get_content_jobs_page: {
+        Args: {
+          p_brand_id?: string
+          p_cursor_created_at?: string
+          p_cursor_id?: string
+          p_limit?: number
+        }
+        Returns: {
+          approved_at: string
+          brand_id: string
+          brand_name: string
+          caption: string
+          completed_at: string
+          content_type: Database["public"]["Enums"]["ContentType"]
+          created_at: string
+          error_message: string
           id: string
           output_url: string
           platforms: Database["public"]["Enums"]["SocialPlatform"][]
@@ -762,6 +866,20 @@ export type Database = {
           username: string
         }[]
       }
+      get_profile_for_checkout: {
+        Args: { p_user_id: string }
+        Returns: {
+          dodo_customer_id: string
+          username: string
+        }[]
+      }
+      get_profile_for_job_submit: {
+        Args: { p_user_id: string }
+        Returns: {
+          banned_at: string
+          plan: string
+        }[]
+      }
       get_social_session: {
         Args: {
           p_brand_id: string
@@ -772,6 +890,10 @@ export type Database = {
           id: string
           session: string
         }[]
+      }
+      mark_content_job_approved: {
+        Args: { p_job_id: string }
+        Returns: undefined
       }
       mark_webhook_processed: {
         Args: { p_error_message?: string; p_webhook_id: string }

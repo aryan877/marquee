@@ -3,11 +3,29 @@
 -- Purpose: subscription state changes. service_role only.
 --
 -- Functions:
+--   get_profile_for_checkout(user_id)
 --   activate_subscription(user_id, sub_id, customer_id, period_end)
 --   renew_subscription(sub_id, period_end)
 --   cancel_subscription(sub_id, cancel_at_period_end)
 --   expire_subscription(sub_id)
 -- =============================================================================
+
+DROP FUNCTION IF EXISTS public.get_profile_for_checkout(UUID);
+CREATE FUNCTION public.get_profile_for_checkout(p_user_id UUID)
+RETURNS TABLE (
+  username         TEXT,
+  dodo_customer_id TEXT
+)
+LANGUAGE sql STABLE SECURITY DEFINER
+SET search_path = ''
+AS $$
+  SELECT username, dodo_customer_id
+  FROM public.profiles
+  WHERE id = p_user_id;
+$$;
+
+REVOKE ALL ON FUNCTION public.get_profile_for_checkout(UUID) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.get_profile_for_checkout(UUID) TO service_role;
 
 DROP FUNCTION IF EXISTS public.activate_subscription(UUID, TEXT, TEXT, TIMESTAMPTZ);
 CREATE FUNCTION public.activate_subscription(

@@ -4,9 +4,12 @@
 --
 -- Functions:
 --   get_content_job_full(id)            → row the worker needs
+--   get_content_job_for_approval(id)    → row approve route needs
 --   get_brand_for_job(brand_id)         → brand context the agent uses
 --   get_social_session(brand_id, platf) → decoded Playwright session
+--   get_connected_social_accounts_for_job(id)
 --   update_content_job_status(...)
+--   mark_content_job_approved(id)
 --   set_job_output(...)
 --   set_job_caption(...)
 --   emit_progress_event(...)            → the realtime fuel
@@ -40,6 +43,28 @@ $$;
 
 REVOKE ALL ON FUNCTION public.get_content_job_full(UUID) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.get_content_job_full(UUID) TO service_role;
+
+DROP FUNCTION IF EXISTS public.get_content_job_for_approval(UUID);
+CREATE FUNCTION public.get_content_job_for_approval(p_job_id UUID)
+RETURNS TABLE (
+  id          UUID,
+  user_id     UUID,
+  brand_id    UUID,
+  status      public."ContentJobStatus",
+  output_url  TEXT,
+  caption     TEXT,
+  platforms   public."SocialPlatform"[]
+)
+LANGUAGE sql STABLE SECURITY DEFINER
+SET search_path = ''
+AS $$
+  SELECT id, user_id, brand_id, status, output_url, caption, platforms
+  FROM public.content_jobs
+  WHERE id = p_job_id;
+$$;
+
+REVOKE ALL ON FUNCTION public.get_content_job_for_approval(UUID) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.get_content_job_for_approval(UUID) TO service_role;
 
 -- ─── get_brand_for_job (worker reads brand context to prompt the agent) ───
 DROP FUNCTION IF EXISTS public.get_brand_for_job(UUID);
@@ -94,6 +119,27 @@ REVOKE ALL ON FUNCTION public.get_social_session(UUID, public."SocialPlatform")
 GRANT EXECUTE ON FUNCTION public.get_social_session(UUID, public."SocialPlatform")
   TO service_role;
 
+DROP FUNCTION IF EXISTS public.get_connected_social_accounts_for_job(UUID);
+CREATE FUNCTION public.get_connected_social_accounts_for_job(p_job_id UUID)
+RETURNS TABLE (
+  platform  public."SocialPlatform",
+  handle    TEXT,
+  is_active BOOLEAN
+)
+LANGUAGE sql STABLE SECURITY DEFINER
+SET search_path = ''
+AS $$
+  SELECT s.platform, s.handle, s.is_active
+  FROM public.content_jobs j
+  JOIN public.social_accounts s ON s.brand_id = j.brand_id
+  WHERE j.id = p_job_id
+    AND s.is_active
+  ORDER BY s.created_at ASC;
+$$;
+
+REVOKE ALL ON FUNCTION public.get_connected_social_accounts_for_job(UUID) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.get_connected_social_accounts_for_job(UUID) TO service_role;
+
 -- ─── update_content_job_status ───
 DROP FUNCTION IF EXISTS public.update_content_job_status(UUID, public."ContentJobStatus", TEXT);
 CREATE FUNCTION public.update_content_job_status(
@@ -129,6 +175,20 @@ REVOKE ALL ON FUNCTION public.update_content_job_status(UUID, public."ContentJob
   FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.update_content_job_status(UUID, public."ContentJobStatus", TEXT)
   TO service_role;
+
+DROP FUNCTION IF EXISTS public.mark_content_job_approved(UUID);
+CREATE FUNCTION public.mark_content_job_approved(p_job_id UUID)
+RETURNS VOID
+LANGUAGE sql SECURITY DEFINER
+SET search_path = ''
+AS $$
+  UPDATE public.content_jobs
+  SET approved_at = now()
+  WHERE id = p_job_id;
+$$;
+
+REVOKE ALL ON FUNCTION public.mark_content_job_approved(UUID) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.mark_content_job_approved(UUID) TO service_role;
 
 -- ─── set_job_output ───
 DROP FUNCTION IF EXISTS public.set_job_output(UUID, TEXT, TEXT, TEXT);

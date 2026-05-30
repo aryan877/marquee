@@ -1,7 +1,7 @@
 import { notFound } from 'next/navigation';
 import { requireUser, getSupabaseServer } from '@/lib/supabase/server';
 import { mintJobToken, workerWsUrl } from '@/lib/ws-token';
-import { Studio, type InitialProgressEvent } from '@/components/app/studio';
+import { Studio, type ConnectedSocialAccount, type InitialProgressEvent } from '@/components/app/studio';
 
 export default async function JobPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -25,8 +25,10 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
 
   const token = mintJobToken({ userId: user.id, jobId: id, ttlSeconds: 60 * 60 });
   const wsUrl = workerWsUrl(id, token);
+  const { data: connectedRows } = await sb.rpc('get_connected_social_accounts', { p_brand_id: job.brand_id });
+  const connectedAccounts = (connectedRows ?? []) satisfies ConnectedSocialAccount[];
 
-  return <Studio job={job} wsUrl={wsUrl} initialEvents={initialEvents} />;
+  return <Studio job={job} wsUrl={wsUrl} initialEvents={initialEvents} connectedAccounts={connectedAccounts} />;
 }
 
 function isPayloadRecord(value: unknown): value is Record<string, unknown> {
