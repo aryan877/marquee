@@ -199,7 +199,8 @@ Required:
 - `NEXT_PUBLIC_WORKER_WS_URL`, `WORKER_HTTP_URL`
 
 For features that need keys (works without — fall back paths exist):
-- `OPENROUTER_API_KEY`, `OPENROUTER_MODEL` — agent reasoning + vision
+- `OPENROUTER_API_KEY`, `OPENROUTER_MODEL` — agent reasoning + vision. `OPENROUTER_API_KEY` must be a runtime API key, not an OpenRouter Management/Provisioning key; management keys can create keys but completions fail with `User not found.`
+- `OPENROUTER_MANAGEMENT_KEY` — optional local-only key for rotating/creating OpenRouter runtime keys; do not use it for model calls.
 - `OPENROUTER_FORM_MODEL` — web form-fill helper (`deepseek/deepseek-v4-flash` by default)
 - `FAL_KEY`, `FAL_IMAGE_MODEL` — Fal AI image assets (`openai/gpt-image-2` by default)
 - `AGENT_DAILY_USD_CAP`, `AGENT_JOB_USD_CAP` — local budget guardrails
