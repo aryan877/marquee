@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Loader2, LogOut, RefreshCw } from 'lucide-react';
+import { Loader2, LogOut, QrCode, RefreshCw } from 'lucide-react';
 import { WHATSAPP_META } from '@/components/marquee/platform-icons';
 
 type WhatsappStatus = {
@@ -20,38 +20,57 @@ export function WhatsappConnect() {
   const Icon = WHATSAPP_META.Icon;
 
   useEffect(() => {
-    void refresh();
+    void refresh({ ensurePairing: true });
   }, []);
 
-  async function refresh(showPending = false) {
-    if (showPending) setPendingAction('refresh');
+  useEffect(() => {
+    if (isConnected(status)) return;
+    if (!status.qr_data_url && status.status !== 'QR' && status.status !== 'CONNECTING') return;
+
+    const timer = window.setInterval(() => {
+      void refresh({ ensurePairing: true });
+    }, 2000);
+
+    return () => window.clearInterval(timer);
+  }, [status.connected, status.qr_data_url, status.status]);
+
+  async function refresh(options: { showPending?: boolean; ensurePairing?: boolean } = {}) {
+    if (options.showPending) setPendingAction('refresh');
     try {
       const res = await fetch('/api/whatsapp');
       const body = await res.json().catch(() => ({}));
+      if (options.ensurePairing && shouldStartPairing(body as WhatsappStatus)) {
+        await requestAction('connect');
+        return;
+      }
       setStatus(body);
+    } catch (err) {
+      setStatus((current) => ({
+        ...current,
+        error: err instanceof Error ? err.message : 'WhatsApp status check failed',
+      }));
     } finally {
-      if (showPending) setPendingAction(null);
+      if (options.showPending) setPendingAction(null);
     }
   }
 
-  function action(name: 'connect' | 'disconnect') {
+  async function requestAction(name: 'connect' | 'disconnect') {
+    const res = await fetch('/api/whatsapp', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ action: name }),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(typeof body.error === 'string' ? body.error : 'WhatsApp request failed');
+    setStatus(body);
+  }
+
+  function action(name: 'connect' | 'disconnect', options: { fresh?: boolean } = {}) {
     setPendingAction(name);
     void (async () => {
       try {
-        const res = await fetch('/api/whatsapp', {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ action: name }),
-        });
-        const body = await res.json().catch(() => ({}));
-        if (!res.ok) {
-          setStatus((current) => ({
-            ...current,
-            error: typeof body.error === 'string' ? body.error : 'WhatsApp request failed',
-          }));
-        } else {
-          setStatus(body);
-        }
+        if (name === 'connect' && options.fresh) await requestAction('disconnect');
+        await requestAction(name);
       } catch (err) {
         setStatus((current) => ({
           ...current,
@@ -63,9 +82,10 @@ export function WhatsappConnect() {
     })();
   }
 
-  const connected = status.connected || status.status === 'CONNECTED';
+  const connected = isConnected(status);
   const canLogout = connected || status.status === 'QR' || status.status === 'CONNECTING' || Boolean(status.qr_data_url);
   const isBusy = pendingAction !== null;
+  const primaryLabel = status.qr_data_url || status.status === 'QR' ? 'New QR' : 'Start pairing';
 
   return (
     <section className="surface mt-8 rounded-[var(--radius-lg)] border border-[var(--color-border)] p-6 lift">
@@ -88,7 +108,7 @@ export function WhatsappConnect() {
         <div className="flex flex-wrap items-center justify-end gap-2">
           <button
             type="button"
-            onClick={() => void refresh(true)}
+            onClick={() => void refresh({ showPending: true, ensurePairing: true })}
             disabled={isBusy}
             className="inline-flex items-center gap-2 rounded-full border border-[var(--color-border)] px-4 py-2 text-sm text-[var(--color-ink)] hover:border-[var(--color-ink)] disabled:opacity-50"
           >
@@ -98,12 +118,12 @@ export function WhatsappConnect() {
           {!connected && (
             <button
               type="button"
-              onClick={() => action('connect')}
+              onClick={() => action('connect', { fresh: Boolean(status.qr_data_url || status.status === 'QR') })}
               disabled={isBusy}
               className="inline-flex items-center gap-2 rounded-full bg-[var(--color-ink)] px-4 py-2 text-sm text-[var(--color-paper)] hover:bg-[var(--color-ink-2)] disabled:opacity-50"
             >
-              {pendingAction === 'connect' && <Loader2 className="h-4 w-4 animate-spin" />}
-              {status.qr_data_url ? 'Refresh QR' : 'Pair phone'}
+              {pendingAction === 'connect' ? <Loader2 className="h-4 w-4 animate-spin" /> : <QrCode className="h-4 w-4" />}
+              {primaryLabel}
             </button>
           )}
           <button
@@ -138,4 +158,16 @@ export function WhatsappConnect() {
       )}
     </section>
   );
+}
+
+function isConnected(status: WhatsappStatus) {
+  return status.connected || status.status === 'CONNECTED';
+}
+
+function shouldStartPairing(status: WhatsappStatus) {
+  if (isConnected(status)) return false;
+  if (status.qr_data_url) return false;
+  return status.status === undefined
+    || status.status === 'DISCONNECTED'
+    || status.status === 'QR';
 }

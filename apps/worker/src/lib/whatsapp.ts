@@ -1,4 +1,12 @@
-import makeWASocket, { DisconnectReason, useMultiFileAuthState, type AnyMessageContent, type WASocket } from '@whiskeysockets/baileys';
+import makeWASocket, {
+  Browsers,
+  DisconnectReason,
+  fetchLatestBaileysVersion,
+  makeCacheableSignalKeyStore,
+  useMultiFileAuthState,
+  type AnyMessageContent,
+  type WASocket,
+} from '@whiskeysockets/baileys';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '@marquee/db';
 import { mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
@@ -18,6 +26,7 @@ type Session = {
   qrDataUrl: string | null;
   sock: WASocket | null;
   starting: Promise<Session> | null;
+  reconnecting: Promise<void> | null;
 };
 
 type SendArgs = {
@@ -100,7 +109,7 @@ export function createWhatsappDelivery(args: {
 
 async function ensureSession(deps: Parameters<typeof createWhatsappDelivery>[0], userId: string) {
   const existing = sessions.get(userId);
-  if (existing?.status === 'CONNECTED' || existing?.status === 'QR') return existing;
+  if (existing?.status === 'CONNECTED' || existing?.status === 'QR' || existing?.status === 'CONNECTING') return existing;
   if (existing?.starting) return existing.starting;
 
   const authDir = authDirFor(deps.outputsDir, userId);
@@ -111,33 +120,54 @@ async function ensureSession(deps: Parameters<typeof createWhatsappDelivery>[0],
     qrDataUrl: null,
     sock: null,
     starting: null,
+    reconnecting: null,
   };
   sessions.set(userId, session);
 
-  session.starting = startSession(deps, session).finally(() => {
-    session.starting = null;
-  });
+  session.starting = startSession(deps, session)
+    .catch(async (err) => {
+      if (sessions.get(userId) === session) {
+        sessions.delete(userId);
+        await deps.supabase.rpc('upsert_whatsapp_delivery_account', {
+          p_user_id: userId,
+          p_status: 'DISCONNECTED',
+        });
+      }
+      throw err;
+    })
+    .finally(() => {
+      session.starting = null;
+    });
   return session.starting;
 }
 
 async function startSession(deps: Parameters<typeof createWhatsappDelivery>[0], session: Session) {
   await hydrateAuthDir(deps, session.userId, session.authDir);
   const { state, saveCreds } = await useMultiFileAuthState(session.authDir);
+  const logger = pino({ level: 'silent' });
+  const versionResult = await fetchLatestBaileysVersion().catch(() => null);
   const sock = makeWASocket({
-    auth: state,
-    browser: ['Marquee', 'Chrome', '1.0.0'],
-    logger: pino({ level: 'silent' }),
+    version: versionResult?.version,
+    auth: {
+      creds: state.creds,
+      keys: makeCacheableSignalKeyStore(state.keys, logger),
+    },
+    browser: Browsers.ubuntu('Marquee'),
+    logger,
+    markOnlineOnConnect: false,
     printQRInTerminal: false,
   });
 
   session.sock = sock;
 
   sock.ev.on('creds.update', async () => {
+    if (sessions.get(session.userId) !== session) return;
     await saveCreds();
     await persistAuthDir(deps, session.userId, session.authDir, session.status);
   });
 
   sock.ev.on('connection.update', async (update) => {
+    if (sessions.get(session.userId) !== session) return;
     if (update.qr) {
       session.qrDataUrl = await QRCode.toDataURL(update.qr, { margin: 1, width: 320 });
       session.status = 'QR';
@@ -150,27 +180,64 @@ async function startSession(deps: Parameters<typeof createWhatsappDelivery>[0], 
     if (update.connection === 'open') {
       session.status = 'CONNECTED';
       session.qrDataUrl = null;
+      session.reconnecting = null;
       await persistAuthDir(deps, session.userId, session.authDir, 'CONNECTED');
     }
 
     if (update.connection === 'close') {
       const code = Number((update.lastDisconnect?.error as { output?: { statusCode?: number } } | undefined)?.output?.statusCode);
+      if (sessions.get(session.userId) !== session) return;
       session.sock = null;
-      if (code === DisconnectReason.loggedOut || code === DisconnectReason.badSession) {
+      if (isTerminalDisconnect(code)) {
         sessions.delete(session.userId);
         await rm(session.authDir, { recursive: true, force: true });
         await deps.supabase.rpc('disconnect_whatsapp_delivery_account', { p_user_id: session.userId });
         return;
       }
-      session.status = 'DISCONNECTED';
+      session.status = 'CONNECTING';
       await deps.supabase.rpc('upsert_whatsapp_delivery_account', {
         p_user_id: session.userId,
-        p_status: 'DISCONNECTED',
+        p_status: 'CONNECTING',
       });
+      queueReconnect(deps, session, code);
     }
   });
 
   return session;
+}
+
+function queueReconnect(
+  deps: Parameters<typeof createWhatsappDelivery>[0],
+  session: Session,
+  code: number,
+) {
+  if (session.reconnecting) return;
+  const waitMs = code === DisconnectReason.restartRequired ? 300 : 1200;
+  session.reconnecting = delay(waitMs)
+    .then(async () => {
+      if (sessions.get(session.userId) !== session) return;
+      await startSession(deps, session);
+    })
+    .catch(async () => {
+      if (sessions.get(session.userId) !== session) return;
+      session.status = 'DISCONNECTED';
+      session.qrDataUrl = null;
+      await deps.supabase.rpc('upsert_whatsapp_delivery_account', {
+        p_user_id: session.userId,
+        p_status: 'DISCONNECTED',
+      });
+    })
+    .finally(() => {
+      if (sessions.get(session.userId) === session) session.reconnecting = null;
+    });
+}
+
+function isTerminalDisconnect(code: number) {
+  return code === DisconnectReason.loggedOut
+    || code === DisconnectReason.badSession
+    || code === DisconnectReason.connectionReplaced
+    || code === DisconnectReason.forbidden
+    || code === DisconnectReason.multideviceMismatch;
 }
 
 async function hydrateAuthDir(
