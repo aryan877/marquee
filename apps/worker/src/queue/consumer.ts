@@ -53,7 +53,10 @@ const tickOnce = Effect.gen(function* () {
     Effect.catchAllCause((cause) =>
       Effect.gen(function* () {
         yield* Effect.logError(`pipeline failed for job ${jobId}`, cause);
-        yield* refund(sb, jobId, 'Generation failed. Slot refunded.');
+        const shouldRefund = yield* shouldRefundFailedJob(sb, jobId);
+        if (shouldRefund) {
+          yield* refund(sb, jobId, 'Generation failed. Slot refunded.');
+        }
       }),
     ),
   );
@@ -73,6 +76,18 @@ const refund = (sb: Supabase, jobId: string, msg: string) =>
       p_error_message: msg,
     }),
   ).pipe(Effect.ignore);
+
+const shouldRefundFailedJob = (sb: Supabase, jobId: string) =>
+  Effect.tryPromise(() => sb.client.rpc('get_content_job_full', { p_job_id: jobId })).pipe(
+    Effect.map(({ data }) => {
+      const row = Array.isArray(data) ? data[0] as Record<string, unknown> | undefined : undefined;
+      if (!row) return true;
+      const status = typeof row.status === 'string' ? row.status : '';
+      const outputUrl = typeof row.output_url === 'string' ? row.output_url : '';
+      return !outputUrl && !['REVIEW', 'POSTING', 'POSTED'].includes(status);
+    }),
+    Effect.catchAll(() => Effect.succeed(true)),
+  );
 
 const heartbeat = Effect.gen(function* () {
   const sb = yield* Supabase;
