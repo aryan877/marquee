@@ -2,6 +2,7 @@ import type { Route } from 'next';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { getSupabaseServer } from '@/lib/supabase/server';
+import { SettingsTabs } from './settings-tabs';
 
 export default async function SettingsPage() {
  const sb = await getSupabaseServer();
@@ -16,8 +17,9 @@ export default async function SettingsPage() {
  <h1 className="mt-2 font-display text-4xl tracking-[-0.04em] md:text-5xl">
  {profile.email}
  </h1>
+ <SettingsTabs active="/app/settings" />
 
- <nav className="mt-10 grid gap-3 sm:grid-cols-2">
+ <nav className="mt-8 grid gap-3 sm:grid-cols-2">
  <Card href="/app/settings/billing" title="Billing" body={profile.plan === 'FOUNDER' ? 'Founder Pass · active' : 'On Free · upgrade for $50/mo'} />
  <Card href="/app/settings/social" title="Connected accounts" body="Bluesky · LinkedIn · more soon" />
  </nav>

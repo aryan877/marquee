@@ -1,5 +1,6 @@
 'use client';
 import { useState, useTransition } from 'react';
+import { formatAppDate } from '@/lib/dates';
 
 export function BillingControls({
  isFounder,
@@ -31,9 +32,9 @@ export function BillingControls({
  <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
  <p className="text-sm text-[var(--color-ink-2)]">
  {cancelAtPeriodEnd && periodEnd
- ? `Set to cancel on ${new Date(periodEnd).toLocaleDateString()}.`
+ ? `Set to cancel on ${formatAppDate(periodEnd)}.`
  : periodEnd
- ? `Renews on ${new Date(periodEnd).toLocaleDateString()}.`
+ ? `Renews on ${formatAppDate(periodEnd)}.`
  : 'Active.'}
  </p>
  <span className="font-mono text-xs tracking-wider text-[var(--color-ink-3)]">

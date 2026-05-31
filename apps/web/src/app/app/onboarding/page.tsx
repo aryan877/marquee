@@ -15,5 +15,5 @@ export default async function OnboardingPage({
   const { data: hasCompleted } = await sb.rpc('has_completed_onboarding');
   if (hasCompleted && mode !== 'new') redirect('/app');
 
-  return <OnboardingWizard />;
+  return <OnboardingWizard mode={mode === 'new' ? 'new' : 'setup'} />;
 }

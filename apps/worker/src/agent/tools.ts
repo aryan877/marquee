@@ -28,7 +28,7 @@ const clip = (value: string, max = MAX_TEXT) => value.trim().slice(0, max);
 const safeJson = (value: unknown) => JSON.stringify(value);
 const toError = (err: unknown) => err instanceof Error ? err : new Error(String(err));
 
-export const makeContentAgentTools = (state: ContentAgentState) =>
+export const makeContentAgentRuntime = (state: ContentAgentState) =>
   Effect.gen(function* () {
     const cfg = yield* AppConfig;
     const render = yield* Renderer;
@@ -124,7 +124,7 @@ export const makeContentAgentTools = (state: ContentAgentState) =>
               jobId: state.ctx.job.id,
               prompt: input.image_prompt,
               imageSize: 'portrait_4_3',
-              quality: 'medium',
+              quality: 'low',
               outputFormat: 'png',
             }).pipe(
               Effect.flatMap((image) =>
@@ -475,7 +475,7 @@ export const makeContentAgentTools = (state: ContentAgentState) =>
       }),
     ];
 
-    return [
+    const tools = [
       ...sharedTools,
       ...(state.ctx.job.content_type === 'VIDEO' || state.ctx.job.content_type === 'REEL' ? videoTools : posterTools),
       tool({
@@ -505,7 +505,20 @@ export const makeContentAgentTools = (state: ContentAgentState) =>
         execute: () => run(emitBudget()).then(toModel),
       }),
     ] satisfies Tool[];
+
+    return {
+      tools,
+      workspaceShell,
+      renderPosterDraft,
+      renderVideoDraft,
+      reviewArtifact,
+      finalizeArtifact,
+      emitBudget,
+    } as const;
   });
+
+export const makeContentAgentTools = (state: ContentAgentState) =>
+  makeContentAgentRuntime(state).pipe(Effect.map((runtime) => runtime.tools));
 
 const toModel = (value: unknown) => safeJson(value);
 

@@ -1,8 +1,6 @@
 import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
-import { pageFromRows } from '@/lib/api/pagination';
 import { getSupabaseServer } from '@/lib/supabase/server';
-import { JobsHistoryList } from '@/components/app/jobs-history-list';
 import { BrandEditor } from './brand-editor';
 
 export default async function BrandDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -17,12 +15,9 @@ export default async function BrandDetailPage({ params }: { params: Promise<{ id
 
   const guide   = (brand.guidelines ?? {}) as { do?: string[]; dont?: string[]; vocabulary?: string[]; hashtags?: string[] };
 
-  const { data: jobs } = await sb.rpc('get_content_jobs_page', { p_brand_id: id, p_limit: 20 });
-  const initialJobsPage = pageFromRows(jobs, 20);
-
   return (
     <div className="px-6 py-10 md:px-10 md:py-14">
-      <div className="mx-auto max-w-5xl">
+      <div className="mx-auto w-full max-w-5xl min-w-0">
         <Link href="/app/brands" className="text-sm text-[var(--color-ink-3)] hover:text-[var(--color-ink)]">
           ← All brands
         </Link>
@@ -56,14 +51,6 @@ export default async function BrandDetailPage({ params }: { params: Promise<{ id
           </section>
         )}
 
-        <section className="mt-12">
-          <SectionLabel>Recent posts</SectionLabel>
-          <JobsHistoryList
-            initialPage={initialJobsPage}
-            brandId={id}
-            emptyText="No posts yet for this brand."
-          />
-        </section>
       </div>
     </div>
   );

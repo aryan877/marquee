@@ -199,10 +199,10 @@ export function BrandEditor({ brand }: { brand: Brand }) {
         </div>
 
         <div className="mt-4 rounded-[var(--radius-md)] border border-[var(--color-border)] p-4">
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+          <div className="grid min-w-0 gap-3 sm:grid-cols-2 xl:grid-cols-3">
             {PALETTE_KEYS.map((key) => (
-              <label key={key} className="min-w-0">
-                <span className="font-mono text-[10px] tracking-[0.16em] text-[var(--color-ink-3)]">
+              <label key={key} className="min-w-0 rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-[var(--color-paper-2)] p-3">
+                <span className="font-mono text-[10px] tracking-[0.12em] text-[var(--color-ink-3)]">
                   {PALETTE_LABELS[key]}
                 </span>
                 <span className="mt-1.5 grid grid-cols-[auto_1fr] items-center gap-2">
@@ -229,7 +229,7 @@ export function BrandEditor({ brand }: { brand: Brand }) {
 
       <section className="mt-10">
         <SectionLabel>Typography</SectionLabel>
-        <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        <div className="mt-3 grid min-w-0 gap-3 md:grid-cols-2">
           {FONT_PAIRS.map((pair) => {
             const active = draft.fonts.heading === pair.heading && draft.fonts.body === pair.body;
             return (
@@ -238,14 +238,14 @@ export function BrandEditor({ brand }: { brand: Brand }) {
                 key={pair.id}
                 onClick={() => setField('fonts', { heading: pair.heading, body: pair.body })}
                 className={cn(
-                  'rounded-[var(--radius-md)] border p-5 text-left transition-colors',
+                  'min-w-0 rounded-[var(--radius-md)] border p-5 text-left transition-colors',
                   active ? 'border-[var(--color-ink)] bg-[var(--color-paper-3)]' : 'border-[var(--color-border)] hover:bg-[var(--color-paper-2)]',
                 )}
               >
-                <div style={{ fontFamily: pair.heading }} className="text-2xl">
+                <div style={{ fontFamily: pair.heading }} className="truncate text-2xl">
                   {pair.heading}
                 </div>
-                <div style={{ fontFamily: pair.body }} className="mt-1 text-sm text-[var(--color-ink-2)]">
+                <div style={{ fontFamily: pair.body }} className="mt-1 truncate text-sm text-[var(--color-ink-2)]">
                   {pair.body}
                 </div>
               </button>

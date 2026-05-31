@@ -1,14 +1,14 @@
-import { Effect, Duration, Schedule } from 'effect';
-import { Agent, Runner } from '@openai/agents';
+import { Effect, Duration, Either, Schedule } from 'effect';
 import { ProgressStep } from '@marquee/shared/progress';
+import { z } from 'zod';
 import { AppConfig } from '../config.js';
 import { Supabase } from '../lib/supabase.js';
 import { AgentBudget } from '../lib/agent-budget.js';
+import { Llm } from '../lib/llm.js';
 import { JobStream } from '../ws/job-stream.js';
 import { makeEmitter } from '../pipelines/progress.js';
 import type { PipelineContext } from '../pipelines/types.js';
-import { makeOpenRouterProvider } from './provider.js';
-import { makeContentAgentTools } from './tools.js';
+import { makeContentAgentRuntime } from './tools.js';
 import type { ContentAgentState } from './types.js';
 import { ensureJobWorkspace } from './workspace.js';
 
@@ -67,76 +67,74 @@ export const runContentAgent = (ctx: PipelineContext) =>
 const runAgenticWorkflow = (ctx: PipelineContext, state: ContentAgentState) =>
   Effect.gen(function* () {
     const cfg = yield* AppConfig;
-    const provider = makeOpenRouterProvider(cfg);
-    const tools = yield* makeContentAgentTools(state);
-    const input = buildAgentInput(ctx);
+    const llm = yield* Llm;
+    const runtime = yield* makeContentAgentRuntime(state);
 
-    if (!provider) {
+    if (!llm.isReady) {
       yield* state.emit(ProgressStep.Error, 'OPENROUTER_API_KEY missing', null, { reason: 'missing_openrouter_key' }) as Effect.Effect<void, never, never>;
       return yield* Effect.fail(new Error('OPENROUTER_API_KEY missing'));
     }
 
-    const posterAgent = new Agent({
-      name: 'Poster Production Agent',
-      instructions: buildPosterInstructions(ctx),
-      model: cfg.openrouterModel,
-      modelSettings: {
-        temperature: 0.7,
-        maxTokens: 1100,
-        parallelToolCalls: false,
-        toolChoice: 'required',
-      },
-      resetToolChoice: true,
-      toolUseBehavior: { stopAtToolNames: ['finalize_artifact'] },
-      tools,
-    });
+    const isVideo = ctx.job.content_type === 'VIDEO' || ctx.job.content_type === 'REEL';
+    const agentName = isVideo ? 'Video Production Agent' : 'Poster Production Agent';
+    const history: AgentObservation[] = [];
 
-    const videoAgent = new Agent({
-      name: 'Video Production Agent',
-      instructions: buildVideoInstructions(ctx),
-      model: cfg.openrouterModel,
-      modelSettings: {
-        temperature: 0.75,
-        maxTokens: 1400,
-        parallelToolCalls: false,
-        toolChoice: 'required',
-      },
-      resetToolChoice: true,
-      toolUseBehavior: { stopAtToolNames: ['finalize_artifact'] },
-      tools,
-    });
-
-    const productionAgent = ctx.job.content_type === 'VIDEO' || ctx.job.content_type === 'REEL'
-      ? videoAgent
-      : posterAgent;
-
-    yield* state.emit(ProgressStep.AgentPlan, `Starting ${productionAgent.name}`, 0.1, {
-      workflow: 'openrouter_chat_tools',
-      agent: productionAgent.name,
+    yield* state.emit(ProgressStep.AgentPlan, `Starting ${agentName}`, 0.1, {
+      workflow: 'openrouter_custom_agent_loop',
+      agent: agentName,
       max_iterations: cfg.agentMaxIterations,
       max_turns: cfg.agentMaxTurns,
     }) as Effect.Effect<void, never, never>;
-    const runner = new Runner({
-      modelProvider: provider,
-      tracingDisabled: true,
-      traceIncludeSensitiveData: false,
-      toolExecution: { maxFunctionToolConcurrency: 1 },
-    });
-    const result = yield* Effect.tryPromise({
-      try: () => runner.run(productionAgent, input, {
+
+    for (let turn = 1; turn <= cfg.agentMaxTurns && !state.finalized; turn++) {
+      const actionEither = yield* Effect.either(nextAgentAction({
+        ctx,
+        llm,
+        history,
+        isVideo,
+        turn,
         maxTurns: cfg.agentMaxTurns,
-      }),
-      catch: (err) => new Error(`content agent failed: ${String(err)}`),
-    });
+        maxIterations: cfg.agentMaxIterations,
+        artifacts: summarizeArtifacts(state),
+      }));
+      if (Either.isLeft(actionEither)) {
+        history.push({
+          turn,
+          actor: agentName,
+          action: 'invalid_action',
+          ok: false,
+          error: actionEither.left.message,
+        });
+        continue;
+      }
+      const observation = yield* executeAgentAction({
+        ctx,
+        state,
+        llm,
+        runtime,
+        action: actionEither.right,
+        history,
+        turn,
+        actor: agentName,
+        isVideo,
+        maxIterations: cfg.agentMaxIterations,
+      });
+      history.push(observation);
+    }
+
+    if (!state.finalized) {
+      return yield* Effect.fail(new Error(`Agent did not finalize within ${cfg.agentMaxTurns} turns`));
+    }
     yield* state.emit(ProgressStep.AgentPlan, 'Agent workflow finished', 0.95, {
-      final_output: String(result.finalOutput ?? '').slice(0, 240),
-      last_agent: result.lastAgent?.name,
+      final_output: 'final artifact selected',
+      last_agent: agentName,
     }) as Effect.Effect<void, never, never>;
   }).pipe(
     Effect.catchAll((err) =>
       Effect.gen(function* () {
-        yield* state.emit(ProgressStep.AgentRevise, 'Agent runner failed', 0.14, { error: err.message }) as Effect.Effect<void, never, never>;
-        return yield* Effect.fail(err);
+        const error = err instanceof Error ? err : new Error(String(err));
+        yield* state.emit(ProgressStep.AgentRevise, 'Agent runner failed', 0.14, { error: error.message }) as Effect.Effect<void, never, never>;
+        return yield* Effect.fail(error);
       }),
     ),
   );
@@ -147,54 +145,407 @@ const extendLease = (rpc: Rpc, msgId: number, vtSeconds: number) =>
     p_visibility_timeout_seconds: vtSeconds,
   })).pipe(Effect.ignore);
 
-const commonInstructions = (ctx: PipelineContext) => [
-  'You are a Marquee production agent running server-side.',
-  'You have a real Docker bash tool named workspace_shell.',
-  'The durable job workspace is /workspace/shared. Inspect it first with workspace_shell. Write short notes/specs there.',
-  'Do not rely on files outside /workspace/shared for durable work.',
-  'You must use tools. Finish by calling finalize_artifact; the run stops on that tool.',
-  'Render, review with vision, revise if needed, and finalize.',
-  'Never claim a visual is good without calling review_artifact after rendering.',
-  'Call finalize_artifact only after at least one render and one review.',
-  'Avoid long exploration. Use the smallest set of tool calls needed to ship.',
-  'Keep public progress short. Do not expose hidden reasoning.',
-  `Brand: ${ctx.brand.name}${ctx.brand.handle ? ` (${ctx.brand.handle})` : ''}`,
-  ctx.brand.description ? `About: ${ctx.brand.description}` : '',
-  ctx.brand.target_audience ? `Audience: ${ctx.brand.target_audience}` : '',
-].filter(Boolean).join('\n');
+const AgentActionSchema = z.discriminatedUnion('action', [
+  z.object({
+    action: z.literal('workspace_shell'),
+    reason: z.string().max(240).optional(),
+    args: z.object({ cmd: z.string().min(1).max(8000) }),
+  }),
+  z.object({
+    action: z.literal('render_poster_draft'),
+    reason: z.string().max(240).optional(),
+    args: z.object({
+      headline: z.string().min(1).max(100),
+      subhead: z.string().max(160).nullable().optional(),
+      template: z.enum(['editorial', 'stat', 'listicle', 'quote']).optional(),
+      image_prompt: z.string().max(600).nullable().optional(),
+      iteration: z.number().int().min(1).max(5).optional(),
+    }),
+  }),
+  z.object({
+    action: z.literal('render_video_draft'),
+    reason: z.string().max(240).optional(),
+    args: z.object({
+      lines: z.array(z.object({
+        text: z.string().min(1).max(110),
+        emotion: z.string().max(40).nullable().optional(),
+        asset_id: z.string().min(1).max(120),
+      })).min(3).max(6),
+      caption: z.string().max(800).nullable().optional(),
+      hashtags: z.array(z.string().max(40)).max(8).nullable().optional(),
+      iteration: z.number().int().min(1).max(5).optional(),
+    }),
+  }),
+  z.object({
+    action: z.literal('review_artifact'),
+    reason: z.string().max(240).optional(),
+    args: z.object({
+      artifact_id: z.uuid(),
+      prompt: z.string().max(600).nullable().optional(),
+      iteration: z.number().int().min(1).max(5).optional(),
+    }),
+  }),
+  z.object({
+    action: z.literal('finalize_artifact'),
+    reason: z.string().max(240).optional(),
+    args: z.object({
+      artifact_id: z.uuid(),
+      caption: z.string().max(800).nullable().optional(),
+      hashtags: z.array(z.string().max(40)).max(8).nullable().optional(),
+    }),
+  }),
+  z.object({
+    action: z.literal('emit_budget'),
+    reason: z.string().max(240).optional(),
+    args: z.object({}).optional(),
+  }),
+  z.object({
+    action: z.literal('delegate_subagent'),
+    reason: z.string().max(240).optional(),
+    args: z.object({
+      agent: z.enum(['creative_director', 'production_engineer', 'visual_critic', 'video_editor']),
+      task: z.string().min(1).max(1000),
+      context: z.string().max(2000).optional(),
+    }),
+  }),
+]);
 
-const buildPosterInstructions = (ctx: PipelineContext) => [
-  commonInstructions(ctx),
-  'You are the poster/carousel specialist.',
-  'Tool order: workspace_shell to inspect the brief and write /workspace/shared/notes/poster-plan.md, render_poster_draft, review_artifact, then finalize_artifact.',
-  'Do not inspect cat assets for poster/carousel jobs.',
-  'Use render_poster_draft with sharp copy and the brand palette. Use Fal image prompting only when it materially improves the poster.',
-  'Use one clean revision at most unless the first render fails.',
-].join('\n');
+const SubagentActionSchema = z.discriminatedUnion('action', [
+  z.object({
+    action: z.literal('workspace_shell'),
+    args: z.object({ cmd: z.string().min(1).max(4000) }),
+  }),
+  z.object({
+    action: z.literal('answer'),
+    args: z.object({
+      summary: z.string().min(1).max(1200),
+      recommendations: z.array(z.string().max(240)).max(8),
+    }),
+  }),
+]);
 
-const buildVideoInstructions = (ctx: PipelineContext) => [
-  commonInstructions(ctx),
-  'You are the cat-meme video specialist.',
-  'Cat assets live in /workspace/shared/assets/cats/metadata.json and /workspace/shared/assets/cats/*.jpg.',
-  'Tool order: workspace_shell to inspect the brief and cat metadata and write /workspace/shared/notes/video-plan.md, render_video_draft, review_artifact, then finalize_artifact.',
-  'For VIDEO/REEL, make a 20-30 second vertical explainer with 3-6 short spoken lines.',
-  'Pass asset_id on every render_video_draft line. The render tool fails without real cat assets.',
-  'Use one clean revision at most unless the first render fails.',
-].join('\n');
+type AgentAction = z.infer<typeof AgentActionSchema>;
+type AgentObservation = {
+  turn: number;
+  actor: string;
+  action: string;
+  ok: boolean;
+  result?: unknown;
+  error?: string;
+};
 
-const buildAgentInput = (ctx: PipelineContext) => JSON.stringify({
-  job_id: ctx.job.id,
-  content_type: ctx.job.content_type,
-  topic: ctx.job.topic,
-  platforms: ctx.job.platforms,
-  brand: {
-    name: ctx.brand.name,
-    handle: ctx.brand.handle,
-    description: ctx.brand.description,
-    industry: ctx.brand.industry,
-    target_audience: ctx.brand.target_audience,
-    voice: ctx.brand.voice,
-    palette: ctx.brand.palette,
-    guidelines: ctx.brand.guidelines,
+type AgentRuntime = {
+  workspaceShell: (input: Extract<AgentAction, { action: 'workspace_shell' }>['args']) => Effect.Effect<unknown, Error, never>;
+  renderPosterDraft: (input: Extract<AgentAction, { action: 'render_poster_draft' }>['args']) => Effect.Effect<unknown, Error, never>;
+  renderVideoDraft: (input: Extract<AgentAction, { action: 'render_video_draft' }>['args']) => Effect.Effect<unknown, Error, never>;
+  reviewArtifact: (input: Extract<AgentAction, { action: 'review_artifact' }>['args']) => Effect.Effect<unknown, Error, never>;
+  finalizeArtifact: (input: Extract<AgentAction, { action: 'finalize_artifact' }>['args']) => Effect.Effect<unknown, Error, never>;
+  emitBudget: () => Effect.Effect<unknown, Error, never>;
+};
+
+const nextAgentAction = (args: {
+  ctx: PipelineContext;
+  llm: Llm;
+  history: AgentObservation[];
+  isVideo: boolean;
+  turn: number;
+  maxTurns: number;
+  maxIterations: number;
+  artifacts: unknown[];
+}) =>
+  args.llm.completeJson<unknown>({
+    system: buildOrchestratorSystem(args.isVideo),
+    user: JSON.stringify({
+      turn: args.turn,
+      max_turns: args.maxTurns,
+      max_iterations: args.maxIterations,
+      job: {
+        id: args.ctx.job.id,
+        content_type: args.ctx.job.content_type,
+        topic: args.ctx.job.topic,
+        platforms: args.ctx.job.platforms,
+      },
+      brand: args.ctx.brand,
+      workspace: {
+        root: '/workspace/shared',
+        brief: '/workspace/shared/brief.md',
+        brand_json: '/workspace/shared/brand.json',
+        job_json: '/workspace/shared/job.json',
+        cat_metadata: '/workspace/shared/assets/cats/metadata.json',
+      },
+      artifacts: args.artifacts,
+      recent_observations: args.history.slice(-10),
+    }),
+    maxTokens: args.isVideo ? 1400 : 1100,
+    temperature: 0.45,
+  }).pipe(
+    Effect.flatMap((json) =>
+      Effect.try({
+        try: () => AgentActionSchema.parse(json),
+        catch: (err) => new Error(`invalid agent action: ${err instanceof Error ? err.message : String(err)}`),
+      }),
+    ),
+  );
+
+const executeAgentAction = (args: {
+  ctx: PipelineContext;
+  state: ContentAgentState;
+  llm: Llm;
+  runtime: AgentRuntime;
+  action: AgentAction;
+  history: AgentObservation[];
+  turn: number;
+  actor: string;
+  isVideo: boolean;
+  maxIterations: number;
+}) =>
+  Effect.gen(function* () {
+    const { action, state, history, turn, actor, isVideo, maxIterations } = args;
+    const shellBeforeRender = history.filter((item) => item.action === 'workspace_shell').length;
+    const hasDraft = state.artifacts.some((artifact) => artifact.role === 'draft');
+    const hasReview = history.some((item) => item.action === 'review_artifact' && item.ok);
+    const draftCount = state.artifacts.filter((artifact) => artifact.role === 'draft').length;
+    const passedReviewArtifactId = latestPassedReviewArtifactId(history);
+    const latestDraft = [...state.artifacts].reverse().find((artifact) => artifact.role === 'draft');
+
+    const blocked = (message: string): AgentObservation => ({
+      turn,
+      actor,
+      action: action.action,
+      ok: false,
+      error: message,
+    });
+
+    if (action.action === 'workspace_shell' && !hasDraft && shellBeforeRender >= 3) {
+      return blocked('workspace_shell pre-render budget is exhausted; render a draft now');
+    }
+    if (passedReviewArtifactId && action.action !== 'finalize_artifact' && action.action !== 'emit_budget') {
+      return blocked(`vision already passed artifact ${passedReviewArtifactId}; finalize_artifact now`);
+    }
+    if (action.action === 'render_poster_draft' && isVideo) {
+      return blocked('render_poster_draft is not available for video jobs');
+    }
+    if (action.action === 'render_video_draft' && !isVideo) {
+      return blocked('render_video_draft is not available for poster/carousel jobs');
+    }
+    if ((action.action === 'render_poster_draft' || action.action === 'render_video_draft') && draftCount >= maxIterations) {
+      return blocked(`draft budget is exhausted at ${maxIterations}; review or finalize the best existing draft${latestDraft ? ` (${latestDraft.id})` : ''}`);
+    }
+    if (action.action === 'finalize_artifact' && !hasReview) {
+      return blocked('review_artifact must pass through the tool layer before finalize_artifact');
+    }
+    if (action.action === 'finalize_artifact' && !passedReviewArtifactId) {
+      return blocked('finalize_artifact requires a passing vision review');
+    }
+    if (action.action === 'finalize_artifact' && action.args.artifact_id !== passedReviewArtifactId) {
+      return blocked(`finalize_artifact must use passing artifact ${passedReviewArtifactId}`);
+    }
+
+    return yield* runActionTool(action, args).pipe(
+      Effect.map((result): AgentObservation => ({
+        turn,
+        actor,
+        action: action.action,
+        ok: true,
+        result: summarizeActionResult(action, result),
+      })),
+      Effect.catchAll((err) =>
+        Effect.succeed({
+          turn,
+          actor,
+          action: action.action,
+          ok: false,
+          error: err.message,
+        } satisfies AgentObservation),
+      ),
+    );
+  });
+
+const runActionTool = (
+  action: AgentAction,
+  args: {
+    ctx: PipelineContext;
+    state: ContentAgentState;
+    llm: Llm;
+    runtime: AgentRuntime;
+    history: AgentObservation[];
+    turn: number;
+    actor: string;
+    isVideo: boolean;
+    maxIterations: number;
   },
-});
+) => {
+  const { runtime } = args;
+  switch (action.action) {
+    case 'workspace_shell':
+      return runtime.workspaceShell(action.args);
+    case 'render_poster_draft':
+      return runtime.renderPosterDraft(action.args);
+    case 'render_video_draft':
+      return runtime.renderVideoDraft(action.args);
+    case 'review_artifact':
+      return runtime.reviewArtifact(action.args);
+    case 'finalize_artifact':
+      return runtime.finalizeArtifact(action.args);
+    case 'emit_budget':
+      return runtime.emitBudget();
+    case 'delegate_subagent':
+      return runSubagent({
+        ctx: args.ctx,
+        state: args.state,
+        llm: args.llm,
+        runtime,
+        parentHistory: args.history,
+        ...action.args,
+      });
+  }
+};
+
+const runSubagent = (args: {
+  ctx: PipelineContext;
+  state: ContentAgentState;
+  llm: Llm;
+  runtime: AgentRuntime;
+  parentHistory: AgentObservation[];
+  agent: 'creative_director' | 'production_engineer' | 'visual_critic' | 'video_editor';
+  task: string;
+  context?: string;
+}) =>
+  Effect.gen(function* () {
+    const observations: AgentObservation[] = [];
+    yield* args.state.emit(ProgressStep.AgentPlan, `Delegating to ${args.agent}`, null, {
+      subagent: args.agent,
+      task: args.task.slice(0, 240),
+    }) as Effect.Effect<void, never, never>;
+
+    for (let turn = 1; turn <= 4; turn++) {
+      const actionEither = yield* Effect.either(args.llm.completeJson<unknown>({
+        system: buildSubagentSystem(args.agent),
+        user: JSON.stringify({
+          task: args.task,
+          context: args.context ?? '',
+          workspace: {
+            root: '/workspace/shared',
+            brief: '/workspace/shared/brief.md',
+            notes: '/workspace/shared/notes',
+            cat_metadata: '/workspace/shared/assets/cats/metadata.json',
+          },
+          artifacts: summarizeArtifacts(args.state),
+          parent_observations: args.parentHistory.slice(-6),
+          subagent_observations: observations,
+        }),
+        maxTokens: 900,
+        temperature: 0.35,
+      }).pipe(
+        Effect.flatMap((json) =>
+          Effect.try({
+            try: () => SubagentActionSchema.parse(json),
+            catch: (err) => new Error(`invalid subagent action: ${err instanceof Error ? err.message : String(err)}`),
+          }),
+        ),
+      ));
+      if (Either.isLeft(actionEither)) {
+        observations.push({ turn, actor: args.agent, action: 'invalid_action', ok: false, error: actionEither.left.message });
+        continue;
+      }
+      const action = actionEither.right;
+      if (action.action === 'answer') {
+        return {
+          agent: args.agent,
+          summary: action.args.summary,
+          recommendations: action.args.recommendations,
+          observations,
+        };
+      }
+      const result = yield* args.runtime.workspaceShell(action.args).pipe(
+        Effect.map((value) => ({ ok: true, result: summarizeResult(value) })),
+        Effect.catchAll((err) => Effect.succeed({ ok: false, error: err.message })),
+      );
+      observations.push({
+        turn,
+        actor: args.agent,
+        action: action.action,
+        ok: result.ok,
+        result: 'result' in result ? result.result : undefined,
+        error: 'error' in result ? result.error : undefined,
+      });
+    }
+
+    return {
+      agent: args.agent,
+      summary: 'Subagent reached its turn cap before a final answer.',
+      recommendations: [],
+      observations,
+    };
+  });
+
+const buildOrchestratorSystem = (isVideo: boolean) => [
+  'You are Marquee Agent, an autonomous production orchestrator inspired by Claude Agent SDK patterns.',
+  'You choose exactly one JSON action per turn. The server validates and executes the action, then returns an observation next turn.',
+  'You have real bash through workspace_shell. It runs in Docker with only /workspace/shared mounted. Use it for brief inspection, notes, asset checks, or lightweight file work.',
+  'You may delegate bounded work with delegate_subagent. Subagents have their own short context and may inspect/write workspace notes through workspace_shell.',
+  'Do not pretend work happened. If you need a visual, call a render tool. If you need QA, call review_artifact. Finish only with finalize_artifact.',
+  'Required lifecycle: inspect/write a short plan if needed, render a draft, review the rendered artifact, revise only if needed, finalize.',
+  'If any review_artifact observation has result.pass=true, the next production action must be finalize_artifact for that reviewed artifact. Do not keep revising passed work.',
+  'Respect max_iterations from the user payload. Never render beyond that draft count; review or finalize existing drafts instead.',
+  'Use no more than three workspace_shell calls before the first render. After that, render instead of exploring.',
+  'Visual bar: strong hierarchy, high contrast, readable at mobile size, brand visible, no cramped text, no generic stock feel, no one-note palette.',
+  'Use emit_budget when cost or long-running behavior matters.',
+  isVideo
+    ? 'Available render action: render_video_draft. Use asset IDs from /workspace/shared/assets/cats/metadata.json. Make 3-6 short lines for a 20-30s vertical video.'
+    : 'Available render action: render_poster_draft. Do not inspect cat assets for poster/carousel jobs. Set image_prompt null unless a low-quality Fal asset materially improves the final poster.',
+  'Return ONLY valid JSON matching one of these shapes:',
+  '{"action":"workspace_shell","reason":"...","args":{"cmd":"..."}}',
+  isVideo
+    ? '{"action":"render_video_draft","reason":"...","args":{"lines":[{"text":"...","emotion":"...","asset_id":"..."}],"caption":"...","hashtags":["..."],"iteration":1}}'
+    : '{"action":"render_poster_draft","reason":"...","args":{"headline":"...","subhead":"...","template":"editorial","image_prompt":null,"iteration":1}}',
+  '{"action":"review_artifact","reason":"...","args":{"artifact_id":"uuid","prompt":"...","iteration":1}}',
+  '{"action":"finalize_artifact","reason":"...","args":{"artifact_id":"uuid","caption":"...","hashtags":["..."]}}',
+  '{"action":"delegate_subagent","reason":"...","args":{"agent":"creative_director|production_engineer|visual_critic|video_editor","task":"...","context":"..."}}',
+  '{"action":"emit_budget","reason":"...","args":{}}',
+].join('\n');
+
+const buildSubagentSystem = (agent: string) => [
+  `You are the ${agent} subagent inside Marquee.`,
+  'You are isolated from the parent context. Do the delegated task and return one JSON action per turn.',
+  'You can either inspect/write workspace notes with workspace_shell or finish with answer.',
+  'workspace_shell runs in Docker with /workspace/shared mounted. Keep commands narrow and useful.',
+  'Return ONLY valid JSON:',
+  '{"action":"workspace_shell","args":{"cmd":"..."}}',
+  '{"action":"answer","args":{"summary":"...","recommendations":["..."]}}',
+].join('\n');
+
+const summarizeArtifacts = (state: ContentAgentState) =>
+  state.artifacts.map((artifact) => ({
+    id: artifact.id,
+    kind: artifact.kind,
+    role: artifact.role,
+    iteration: artifact.iteration,
+    url: artifact.url,
+    width: artifact.width,
+    height: artifact.height,
+    duration_s: artifact.durationS,
+    metadata: artifact.metadata,
+  }));
+
+const latestPassedReviewArtifactId = (history: AgentObservation[]) => {
+  for (const item of [...history].reverse()) {
+    if (item.action !== 'review_artifact' || !item.ok || typeof item.result !== 'object' || item.result === null) continue;
+    const result = item.result as { pass?: unknown; artifact_id?: unknown };
+    if (result.pass === true && typeof result.artifact_id === 'string') return result.artifact_id;
+  }
+  return null;
+};
+
+const summarizeActionResult = (action: AgentAction, value: unknown) => {
+  if (action.action === 'review_artifact' && typeof value === 'object' && value !== null) {
+    return summarizeResult({ ...value, artifact_id: action.args.artifact_id });
+  }
+  return summarizeResult(value);
+};
+
+const summarizeResult = (value: unknown) => {
+  if (typeof value === 'string') return value.slice(0, 2000);
+  const json = JSON.stringify(value);
+  return json.length > 2500 ? `${json.slice(0, 2500)}…` : value;
+};

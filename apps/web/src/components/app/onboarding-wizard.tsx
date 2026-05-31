@@ -60,7 +60,7 @@ const VOICE_ID_SET = new Set<VoiceId>(VOICE_IDS);
 const PALETTE_ID_SET = new Set<PaletteId>(PALETTE_IDS);
 const FONT_ID_SET = new Set<FontId>(FONT_IDS);
 
-export function OnboardingWizard() {
+export function OnboardingWizard({ mode = 'setup' }: { mode?: 'setup' | 'new' }) {
  const router = useRouter();
  const [step, setStep] = useState(0);
  const [draft, setDraft] = useState<Draft>(EMPTY);
@@ -100,21 +100,23 @@ export function OnboardingWizard() {
  setError(body.error ?? 'Could not save brand');
  return;
  }
- router.replace('/app');
+ const body = await res.json().catch(() => ({}));
+ const brandId = typeof body.brand_id === 'string' ? body.brand_id : null;
+ router.replace(mode === 'new' && brandId ? `/app/brands/${brandId}` : '/app');
  router.refresh();
  });
  }
 
  return (
- <div className="grid flex-1 lg:grid-cols-[1fr_420px]">
- <section className="flex flex-col px-6 py-10 md:px-12">
+ <div className="grid min-h-[calc(100vh-var(--app-banner-height))] min-w-0 overflow-hidden lg:grid-cols-[minmax(0,1fr)_minmax(380px,32vw)]">
+ <section className="flex min-w-0 flex-col overflow-y-auto px-6 py-10 md:px-12">
  <header className="flex items-baseline justify-between">
  <div>
  <p className="font-mono text-xs tracking-[0.2em] text-[var(--color-ink-3)]">
- Setup · {step + 1} of {STEPS.length}
+ {mode === 'new' ? 'New brand' : 'Setup'} · {step + 1} of {STEPS.length}
  </p>
  <h1 className="mt-2 font-display text-4xl tracking-[-0.04em] md:text-5xl">
- {STEPS[step] === 'Brand' && 'Tell us about your brand.'}
+ {STEPS[step] === 'Brand' && (mode === 'new' ? 'Tell us about this brand.' : 'Tell us about your brand.')}
  {STEPS[step] === 'Voice' && 'How does it sound?'}
  {STEPS[step] === 'Look' && 'How does it look?'}
  {STEPS[step] === 'Review' && 'Looks good?'}
@@ -175,7 +177,7 @@ export function OnboardingWizard() {
  </section>
 
  <aside
- className="relative hidden overflow-hidden border-l border-[var(--color-border)] lg:block"
+ className="relative hidden min-w-0 overflow-hidden border-l border-[var(--color-border)] lg:block"
  style={{ background: draft.palette.bg, color: draft.palette.fg }}
  >
  <PreviewCard draft={draft} palette={draft.palette} paletteName={palettePreset.name} voice={voice} fonts={fonts} />
@@ -496,14 +498,14 @@ function PreviewCard({
  fonts: typeof FONT_PAIRS[number];
 }) {
  return (
- <div className="absolute inset-0 flex flex-col p-10">
+ <div className="absolute inset-0 flex min-w-0 flex-col p-10">
  <div className="font-mono text-[10px] tracking-[0.2em] opacity-60">
  Preview · {paletteName}
  </div>
- <div className="flex flex-1 flex-col justify-center">
+ <div className="flex min-w-0 flex-1 flex-col justify-center">
  <div
- style={{ fontFamily: fonts.heading, lineHeight: 0.92, letterSpacing: '-0.05em' }}
- className="text-5xl xl:text-7xl"
+ style={{ fontFamily: fonts.heading, lineHeight: 0.96, letterSpacing: 0 }}
+ className="max-w-full break-words text-5xl xl:text-6xl"
  >
  {draft.name || 'Your Brand'}
  </div>

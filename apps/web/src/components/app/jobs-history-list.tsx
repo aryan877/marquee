@@ -4,6 +4,7 @@ import Link from 'next/link';
 import type { Database } from '@marquee/db';
 import type { JobHistoryPage } from '@/hooks/queries';
 import { usePaginatedJobs } from '@/hooks/queries';
+import { formatAppDateTime } from '@/lib/dates';
 
 type Job = Database['public']['Functions']['get_content_jobs_page']['Returns'][number];
 
@@ -29,7 +30,7 @@ export function JobsHistoryList({
 
   return (
     <div className="mt-10">
-      <ul className="divide-y divide-[var(--color-border)] rounded-[var(--radius-lg)] border border-[var(--color-border)] surface">
+      <ul className="overflow-hidden rounded-[var(--radius-lg)] border border-[var(--color-border)] surface">
         {jobs.map((j) => <JobRow key={j.id} job={j} />)}
       </ul>
 
@@ -50,22 +51,25 @@ export function JobsHistoryList({
 }
 
 function JobRow({ job: j }: { job: Job }) {
+  const platforms = (j.platforms ?? []).join(', ') || 'no platforms';
+  const createdAt = formatAppDateTime(j.created_at);
+
   return (
-    <li>
+    <li className="border-b border-[var(--color-border)] last:border-b-0">
       <Link
         href={`/app/jobs/${j.id}`}
-        className="flex items-center justify-between gap-4 px-5 py-4 transition-colors hover:bg-[var(--color-paper-2)]"
+        className="flex items-center justify-between gap-4 px-5 py-4 transition-colors hover:bg-[var(--color-paper-2)] focus-visible:bg-[var(--color-paper-2)] focus-visible:outline-none"
       >
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 text-sm">
             <StatusDot status={j.status} />
-            <span className="font-medium">{j.topic ?? 'Untitled'}</span>
+            <span className="truncate font-medium">{j.topic ?? 'Untitled'}</span>
           </div>
           <div className="mt-1 truncate text-xs text-[var(--color-ink-3)]">
-            {j.brand_name ? `${j.brand_name} · ` : ''}{j.content_type} · {(j.platforms ?? []).join(', ') || 'no platforms'} · {new Date(j.created_at).toLocaleString()}
+            {j.brand_name ? `${j.brand_name} · ` : ''}{j.content_type} · {platforms} · <time dateTime={j.created_at}>{createdAt}</time>
           </div>
         </div>
-        <span className="font-mono text-xs tracking-wider text-[var(--color-ink-3)]">{j.status}</span>
+        <span className="shrink-0 font-mono text-xs tracking-wider text-[var(--color-ink-3)]">{j.status}</span>
       </Link>
     </li>
   );

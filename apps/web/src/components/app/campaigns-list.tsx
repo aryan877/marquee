@@ -3,6 +3,7 @@
 import type { Database } from '@marquee/db';
 import type { CampaignListPage } from '@/hooks/queries';
 import { usePaginatedCampaigns } from '@/hooks/queries';
+import { formatAppDateTime } from '@/lib/dates';
 
 type Campaign = Database['public']['Functions']['get_campaigns_page']['Returns'][number];
 
@@ -14,7 +15,7 @@ export function CampaignsList({ initialPage }: { initialPage: CampaignListPage }
 
   return (
     <div className="mt-10">
-      <ul className="divide-y divide-[var(--color-border)] rounded-[var(--radius-lg)] border border-[var(--color-border)] surface">
+      <ul className="overflow-hidden rounded-[var(--radius-lg)] border border-[var(--color-border)] surface">
         {campaigns.map((c) => <CampaignRow key={c.id} campaign={c} />)}
       </ul>
 
@@ -47,9 +48,8 @@ function EmptyState() {
 }
 
 function CampaignRow({ campaign: c }: { campaign: Campaign }) {
-  const next = c.next_run_at ? new Date(c.next_run_at) : null;
   return (
-    <li className="flex items-center justify-between gap-4 px-5 py-4">
+    <li className="flex items-center justify-between gap-4 border-b border-[var(--color-border)] px-5 py-4 last:border-b-0">
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2 text-sm">
           <span
@@ -63,10 +63,10 @@ function CampaignRow({ campaign: c }: { campaign: Campaign }) {
         </div>
       </div>
       <div className="text-right text-xs text-[var(--color-ink-3)]">
-        {next ? (
+        {c.next_run_at ? (
           <>
             <div>Next run</div>
-            <div className="font-mono text-[var(--color-ink-2)]">{next.toLocaleString()}</div>
+            <time dateTime={c.next_run_at} className="font-mono text-[var(--color-ink-2)]">{formatAppDateTime(c.next_run_at)}</time>
           </>
         ) : (
           <span className="font-mono">paused</span>

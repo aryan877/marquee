@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation';
 import { getSupabaseServer } from '@/lib/supabase/server';
 import { PLANS } from '@marquee/shared/billing';
+import { SettingsTabs } from '../settings-tabs';
 import { BillingControls } from './billing-controls';
 
 export default async function BillingPage() {
@@ -24,8 +25,9 @@ export default async function BillingPage() {
  ? 'Renews automatically. Cancel anytime; access stays through the period.'
  : 'Founder Pass moves you to the priority queue and unlocks daily autopilot.'}
  </p>
+ <SettingsTabs active="/app/settings/billing" />
 
- <div className="mt-10 surface rounded-[var(--radius-lg)] border border-[var(--color-ink)] p-8 lift-2">
+ <div className="mt-8 surface rounded-[var(--radius-lg)] border border-[var(--color-ink)] p-8 lift-2">
  <div className="flex items-baseline justify-between">
  <h2 className="font-display text-3xl tracking-[-0.04em]">{founder.label}</h2>
  <div className="font-display tracking-[-0.04em]">
