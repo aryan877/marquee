@@ -149,73 +149,6 @@ export function GenerateForm({ initialBrandsPage }: { initialBrandsPage: BrandLi
  </section>
 
  <section>
- <div className="flex items-end justify-between gap-4">
- <div>
- <h3 className="font-mono text-xs tracking-[0.2em] text-[var(--color-ink-3)]">Assets (optional)</h3>
- <p className="mt-1 text-sm text-[var(--color-ink-3)]">
- Upload screenshots, product shots, demo clips, or reference docs. The agent reads your notes and uses them where they fit.
- </p>
- </div>
- <label
- className={cn(
- 'inline-flex cursor-pointer items-center gap-2 rounded-full border border-[var(--color-border-strong)] px-4 py-2 text-sm hover:bg-[var(--color-paper-2)]',
- (!brandId || uploading || assets.length >= 8) && 'pointer-events-none opacity-50',
- )}
- >
- <Upload className="h-4 w-4" />
- {uploading ? 'Uploading...' : 'Add assets'}
- <input
- type="file"
- multiple
- accept="image/png,image/jpeg,image/webp,image/gif,video/mp4,video/webm,video/quicktime,application/pdf"
- className="hidden"
- disabled={!brandId || uploading || assets.length >= 8}
- onChange={(e) => {
- void uploadFiles(e.target.files);
- e.currentTarget.value = '';
- }}
- />
- </label>
- </div>
- {assets.length > 0 && (
- <div className="mt-3 space-y-3">
- {assets.map((asset) => (
- <div key={asset.id} className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-3">
- <div className="flex items-start justify-between gap-3">
- <div className="min-w-0">
- <div className="truncate text-sm font-medium">{asset.file_name}</div>
- <div className="mt-0.5 font-mono text-xs text-[var(--color-ink-3)]">{asset.kind} · {formatBytes(asset.size)}</div>
- </div>
- <button
- type="button"
- onClick={() => setAssets((current) => current.filter((item) => item.id !== asset.id))}
- className="rounded-full p-1 text-[var(--color-ink-3)] hover:bg-[var(--color-paper-2)] hover:text-[var(--color-ink)]"
- aria-label={`Remove ${asset.file_name}`}
- >
- <X className="h-4 w-4" />
- </button>
- </div>
- <div className="mt-3 grid gap-2 md:grid-cols-2">
- <input
- value={asset.description ?? ''}
- onChange={(e) => updateAsset(asset.id, { description: e.target.value })}
- placeholder="What is this asset?"
- className="rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-[var(--color-paper)] px-3 py-2 text-sm focus:border-[var(--color-ink)] focus:outline-none"
- />
- <input
- value={asset.usage_hint ?? ''}
- onChange={(e) => updateAsset(asset.id, { usage_hint: e.target.value })}
- placeholder="How should the agent use it?"
- className="rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-[var(--color-paper)] px-3 py-2 text-sm focus:border-[var(--color-ink)] focus:outline-none"
- />
- </div>
- </div>
- ))}
- </div>
- )}
- </section>
-
- <section>
  <label htmlFor="generation-topic" className="font-mono text-xs tracking-[0.2em] text-[var(--color-ink-3)]">
  Topic (optional)
  </label>
@@ -252,6 +185,87 @@ export function GenerateForm({ initialBrandsPage }: { initialBrandsPage: BrandLi
  placeholder="e.g. how to survive a 9-to-5, explained by cats"
  className="mt-2 w-full rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-3 text-base text-[var(--color-ink)] focus:border-[var(--color-ink)] focus:outline-none"
  />
+ <div className="mt-4 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
+ <div className="flex flex-wrap items-center justify-between gap-3">
+ <div>
+ <h3 className="font-mono text-xs tracking-[0.2em] text-[var(--color-ink-3)]">Assets</h3>
+ <p className="mt-1 text-sm text-[var(--color-ink-3)]">
+ Optional references for the agent: screenshots, product shots, demo clips, or PDFs.
+ </p>
+ </div>
+ <label
+ className={cn(
+ 'inline-flex cursor-pointer items-center gap-2 rounded-full border border-[var(--color-border-strong)] px-4 py-2 text-sm hover:bg-[var(--color-paper-2)]',
+ (!brandId || uploading || assets.length >= 8) && 'pointer-events-none opacity-50',
+ )}
+ >
+ <Upload className="h-4 w-4" />
+ {uploading ? 'Uploading...' : assets.length > 0 ? 'Add more' : 'Add assets'}
+ <input
+ type="file"
+ multiple
+ accept="image/png,image/jpeg,image/webp,image/gif,video/mp4,video/webm,video/quicktime,application/pdf"
+ className="hidden"
+ disabled={!brandId || uploading || assets.length >= 8}
+ onChange={(e) => {
+ void uploadFiles(e.target.files);
+ e.currentTarget.value = '';
+ }}
+ />
+ </label>
+ </div>
+ {assets.length === 0 ? (
+ <div className="mt-3 rounded-[var(--radius-sm)] border border-dashed border-[var(--color-border)] px-3 py-3 text-sm text-[var(--color-ink-3)]">
+ Attach files only when they should guide the output. Each uploaded asset can include a short note.
+ </div>
+ ) : (
+ <div className="mt-3 grid gap-3 lg:grid-cols-2">
+ {assets.map((asset) => (
+ <div key={asset.id} className="rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-[var(--color-paper)] p-3">
+ <div className="flex items-start gap-3">
+ <div className="grid h-14 w-14 shrink-0 place-items-center overflow-hidden rounded-[var(--radius-xs)] border border-[var(--color-border)] bg-[var(--color-paper-2)] font-mono text-[10px] uppercase tracking-wider text-[var(--color-ink-3)]">
+ {asset.kind === 'image' ? (
+ <img src={asset.url} alt="" className="h-full w-full object-cover" />
+ ) : (
+ asset.kind
+ )}
+ </div>
+ <div className="min-w-0 flex-1">
+ <div className="flex items-start justify-between gap-3">
+ <div className="min-w-0">
+ <div className="truncate text-sm font-medium">{asset.file_name}</div>
+ <div className="mt-0.5 font-mono text-xs text-[var(--color-ink-3)]">{asset.kind} · {formatBytes(asset.size)}</div>
+ </div>
+ <button
+ type="button"
+ onClick={() => setAssets((current) => current.filter((item) => item.id !== asset.id))}
+ className="rounded-full p-1 text-[var(--color-ink-3)] hover:bg-[var(--color-paper-2)] hover:text-[var(--color-ink)]"
+ aria-label={`Remove ${asset.file_name}`}
+ >
+ <X className="h-4 w-4" />
+ </button>
+ </div>
+ <div className="mt-3 grid gap-2">
+ <input
+ value={asset.description ?? ''}
+ onChange={(e) => updateAsset(asset.id, { description: e.target.value })}
+ placeholder="What is this?"
+ className="rounded-[var(--radius-xs)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm focus:border-[var(--color-ink)] focus:outline-none"
+ />
+ <input
+ value={asset.usage_hint ?? ''}
+ onChange={(e) => updateAsset(asset.id, { usage_hint: e.target.value })}
+ placeholder="How should the agent use it?"
+ className="rounded-[var(--radius-xs)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm focus:border-[var(--color-ink)] focus:outline-none"
+ />
+ </div>
+ </div>
+ </div>
+ </div>
+ ))}
+ </div>
+ )}
+ </div>
  </section>
 
  {error && (
