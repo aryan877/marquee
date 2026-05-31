@@ -1,6 +1,7 @@
-import { readPalette, readFonts, type TemplateProps } from '../template-shared';
+import { PosterDecorations } from '../poster-decorations';
+import { contentLayerStyle, readPalette, readFonts, type TemplateProps } from '../template-shared';
 
-export function StatTemplate({ brand, headline, subhead, visible }: TemplateProps) {
+export function StatTemplate({ brand, headline, subhead, visible, assets }: TemplateProps) {
   const palette = readPalette(brand);
   const fonts = readFonts(brand);
   const big = pickStat(headline);
@@ -15,13 +16,14 @@ export function StatTemplate({ brand, headline, subhead, visible }: TemplateProp
       padding: 96,
       display: 'flex', flexDirection: 'column', justifyContent: 'space-between',
     }}>
+      <PosterDecorations assets={assets} />
       {visible.has('wordmark') && (
-        <span style={{ fontFamily: fonts.heading, fontSize: 28, letterSpacing: '-0.04em' }}>
+        <span style={{ ...contentLayerStyle, fontFamily: fonts.heading, fontSize: 28, letterSpacing: 0 }}>
           {brand.name.toLowerCase()}.
         </span>
       )}
       {visible.has('headline') && (
-        <div>
+        <div style={contentLayerStyle}>
           <div style={{
             fontFamily: fonts.heading,
             fontSize: 360,
@@ -45,7 +47,7 @@ export function StatTemplate({ brand, headline, subhead, visible }: TemplateProp
         </div>
       )}
       {visible.has('accent') && (
-        <span style={{ color: palette.bg, opacity: 0.6, fontSize: 22 }}>
+        <span style={{ ...contentLayerStyle, color: palette.bg, opacity: 0.6, fontSize: 22 }}>
           source: {brand.handle ?? brand.name}
         </span>
       )}

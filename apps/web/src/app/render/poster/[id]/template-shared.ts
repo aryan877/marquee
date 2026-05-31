@@ -1,4 +1,5 @@
 import type { Database } from '@marquee/db';
+import type { CSSProperties } from 'react';
 import { DEFAULT_BRAND_STYLE, fontsById, paletteById } from '@marquee/shared/palettes';
 
 export type Job = Database['public']['Functions']['get_content_job_full']['Returns'][number];
@@ -10,6 +11,17 @@ export interface TemplateProps {
   headline: string;
   subhead?: string;
   visible: Set<string>;
+  assets: PosterRenderAsset[];
+}
+
+export interface PosterRenderAsset {
+  url: string;
+  x: number;
+  y: number;
+  width: number;
+  rotation: number;
+  opacity?: number;
+  blend?: 'normal' | 'multiply';
 }
 
 export interface Palette {
@@ -41,3 +53,8 @@ export function readFonts(brand: Brand): { heading: string; body: string } {
     body:    f.body    ?? DEFAULT_FONTS.body,
   };
 }
+
+export const contentLayerStyle: CSSProperties = {
+  position: 'relative',
+  zIndex: 2,
+};

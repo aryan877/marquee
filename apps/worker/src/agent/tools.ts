@@ -15,7 +15,7 @@ import { FalImage } from '../lib/fal-image.js';
 import { Vision } from '../lib/vision.js';
 import { AgentBudget } from '../lib/agent-budget.js';
 import type { ArtifactRecord, ContentAgentState } from './types.js';
-import { stageCatAsset } from './workspace.js';
+import { stageVisualAsset } from './workspace.js';
 
 const MAX_TEXT = 180;
 const LAYERS = ['background', 'wordmark', 'headline', 'accent', 'final'] as const;
@@ -23,6 +23,37 @@ const execFileAsync = promisify(execFile);
 
 type RpcResult = { data: unknown; error: unknown };
 type Rpc = (fn: string, args?: Record<string, unknown>) => Promise<RpcResult>;
+type PosterAssetPlacement = {
+  x: number;
+  y: number;
+  width: number;
+  rotation?: number;
+  opacity?: number;
+};
+type PosterGeneratedAssetRequest = PosterAssetPlacement & { prompt: string };
+type PosterUserAssetRequest = PosterAssetPlacement & { asset_id: string };
+type PosterRenderAsset = PosterAssetPlacement & { url: string };
+type PosterRenderAssetWithBlend = PosterRenderAsset & { blend?: 'normal' | 'multiply' };
+type PosterTemplate = 'editorial' | 'stat' | 'listicle' | 'quote';
+type PlacementRect = { x: number; y: number; width: number; height: number };
+
+const PosterGeneratedAssetSchema = z.object({
+  prompt: z.string().min(1).max(280),
+  x: z.number().min(0).max(92),
+  y: z.number().min(0).max(92),
+  width: z.number().min(6).max(28),
+  rotation: z.number().min(-24).max(24).optional().default(0),
+  opacity: z.number().min(0.25).max(1).optional(),
+});
+
+const PosterUserAssetSchema = z.object({
+  asset_id: z.string().min(1).max(160),
+  x: z.number().min(0).max(92),
+  y: z.number().min(0).max(92),
+  width: z.number().min(6).max(36),
+  rotation: z.number().min(-24).max(24).optional().default(0),
+  opacity: z.number().min(0.25).max(1).optional(),
+});
 
 const clip = (value: string, max = MAX_TEXT) => value.trim().slice(0, max);
 const safeJson = (value: unknown) => JSON.stringify(value);
@@ -117,41 +148,111 @@ export const makeContentAgentRuntime = (state: ContentAgentState) =>
       subhead?: string | null;
       template?: 'editorial' | 'stat' | 'listicle' | 'quote';
       image_prompt?: string | null;
+      asset_prompts?: PosterGeneratedAssetRequest[] | null;
+      user_assets?: PosterUserAssetRequest[] | null;
       iteration?: number;
     }) =>
       withToolProgress('render_poster_draft', input.iteration ?? 1, { headline: input.headline, template: input.template ?? 'editorial' },
         Effect.gen(function* () {
           const iteration = input.iteration ?? 1;
-          if (input.image_prompt && fal.isReady) {
-            yield* fal.generate({
+          const template = input.template ?? 'editorial';
+          const posterAssets: PosterRenderAssetWithBlend[] = [];
+          for (const requested of normalizeUserPosterAssets(input.user_assets, template)) {
+            const staged = yield* fromPromise(async () =>
+              stageVisualAsset(state.workspace, requested.asset_id, cfg.workerHttpUrl, state.ctx.job.id, requested.asset_id));
+            const stagedPath = join(state.workspace.root, staged.path);
+            let assetPath = stagedPath;
+            let assetType = staged.asset.content_type;
+            if (assetType.startsWith('video/')) {
+              const frameKey = `${state.ctx.job.id}/agent/poster-input-frame-${iteration}-${posterAssets.length + 1}.jpg`;
+              const framePath = join(cfg.outputsDir, frameKey);
+              yield* ff.extractFrame({ videoPath: stagedPath, outPath: framePath, atSeconds: 1 });
+              assetPath = framePath;
+              assetType = 'image/jpeg';
+            }
+            const saved = yield* storage.saveFile(
+              `${state.ctx.job.id}/agent/poster-input-${iteration}-${posterAssets.length + 1}${extForContentType(assetType)}`,
+              assetPath,
+              assetType,
+            );
+            yield* createArtifact({
+              kind: 'image',
+              role: 'intermediate',
+              iteration,
+              url: saved.url,
+              key: saved.key,
+              mimeType: assetType,
+              width: null,
+              height: null,
+              durationS: null,
+              metadata: {
+                source: staged.asset.source,
+                input_asset_id: staged.asset.id,
+                description: 'description' in staged.asset ? staged.asset.description : '',
+                usage_hint: 'usage_hint' in staged.asset ? staged.asset.usage_hint : '',
+                placement: placementPayload(requested),
+              },
+            });
+            posterAssets.push({ url: saved.url, ...placementPayload(requested), blend: 'normal' });
+            yield* state.emit(ProgressStep.AssetFetch, `Placed ${staged.asset.title}`, null, {
+              asset_id: staged.asset.id,
+              emotion: 'reference',
+              url: saved.url,
+              thumbnail_url: saved.url,
+              scene_index: posterAssets.length - 1,
+            }) as Effect.Effect<void, never, never>;
+          }
+
+          const generatedAssets = normalizeGeneratedPosterAssets(input, template);
+          if (generatedAssets.length > 0 && !fal.isReady) {
+            return yield* Effect.fail(new Error('FAL_KEY missing for requested poster assets'));
+          }
+          for (const requested of generatedAssets) {
+            const image = yield* fal.generate({
               jobId: state.ctx.job.id,
-              prompt: input.image_prompt,
-              imageSize: 'portrait_4_3',
+              prompt: posterAssetPrompt(requested.prompt, state),
+              imageSize: 'square',
               quality: 'low',
               outputFormat: 'png',
-            }).pipe(
-              Effect.flatMap((image) =>
-                createArtifact({
-                  kind: 'image',
-                  role: 'intermediate',
-                  iteration,
-                  url: image.url,
-                  key: null,
-                  mimeType: image.contentType ?? 'image/png',
-                  width: image.width,
-                  height: image.height,
-                  durationS: null,
-                  metadata: { request_id: image.requestId, source: 'fal' },
-                }),
-              ),
-              Effect.ignore,
+            });
+            const downloaded = yield* downloadMedia(image.url);
+            const saved = yield* storage.saveBytes(
+              `${state.ctx.job.id}/agent/poster-asset-${iteration}-${posterAssets.length + 1}.png`,
+              downloaded.bytes,
+              image.contentType ?? downloaded.contentType ?? 'image/png',
             );
+            yield* createArtifact({
+              kind: 'image',
+              role: 'intermediate',
+              iteration,
+              url: saved.url,
+              key: saved.key,
+              mimeType: image.contentType ?? downloaded.contentType ?? 'image/png',
+              width: image.width,
+              height: image.height,
+              durationS: null,
+              metadata: {
+                request_id: image.requestId,
+                source: 'fal',
+                usage: 'poster_decorative_asset',
+                prompt: clip(requested.prompt, 280),
+                placement: placementPayload(requested),
+              },
+            });
+            posterAssets.push({ url: saved.url, ...placementPayload(requested), blend: 'multiply' });
+            yield* state.emit(ProgressStep.AssetFetch, `Generated poster asset ${posterAssets.length}`, null, {
+              asset_id: `generated-${posterAssets.length}`,
+              emotion: 'decorative',
+              url: saved.url,
+              thumbnail_url: saved.url,
+              scene_index: posterAssets.length - 1,
+            }) as Effect.Effect<void, never, never>;
           }
           const visibleLayers = [...LAYERS];
-          const renderUrl = buildPosterRenderUrl(cfg.webBaseUrl, state.ctx.job.id, input.template ?? 'editorial', visibleLayers, {
+          const renderUrl = buildPosterRenderUrl(cfg.webBaseUrl, state.ctx.job.id, template, visibleLayers, {
             headline: clip(input.headline, 90),
             subhead: input.subhead ? clip(input.subhead, 140) : undefined,
-          });
+          }, posterAssets);
           const png = yield* render.shot({ url: renderUrl, width: 1080, height: 1350, deviceScaleFactor: 1 });
           const saved = yield* storage.saveBytes(`${state.ctx.job.id}/agent/poster-${iteration}.png`, png);
           const artifact = yield* createArtifact({
@@ -164,12 +265,17 @@ export const makeContentAgentRuntime = (state: ContentAgentState) =>
             width: 1080,
             height: 1350,
             durationS: null,
-            metadata: { template: input.template ?? 'editorial', headline: clip(input.headline, 90), subhead: input.subhead ?? null },
+            metadata: {
+              template,
+              headline: clip(input.headline, 90),
+              subhead: input.subhead ?? null,
+              assets: posterAssets,
+            },
           });
           yield* state.emit(ProgressStep.PosterLayer, `Draft poster ${iteration}`, 0.45, {
             layer: 'final',
             preview_url: saved.url,
-            template: input.template ?? 'editorial',
+            template,
           }) as Effect.Effect<void, never, never>;
           return artifact;
         }),
@@ -264,7 +370,7 @@ export const makeContentAgentRuntime = (state: ContentAgentState) =>
           for (let i = 0; i < lines.length; i++) {
             const line = lines[i]!;
             const staged = yield* fromPromise(async () => {
-              return await stageCatAsset(state.workspace, line.assetId!, cfg.workerHttpUrl, state.ctx.job.id);
+              return await stageVisualAsset(state.workspace, line.assetId!, cfg.workerHttpUrl, state.ctx.job.id);
             });
             const stagedSaved = yield* storage.saveFile(
               `${state.ctx.job.id}/agent/assets/${basename(staged.path)}`,
@@ -281,7 +387,15 @@ export const makeContentAgentRuntime = (state: ContentAgentState) =>
               duration_s: durationSec,
               voice: tts.voice,
             }) as Effect.Effect<void, never, never>;
-            const cardUrl = buildCardRenderUrl(cfg.webBaseUrl, state.ctx.job.id, line.text, i + 1, lines.length, stagedSaved.url);
+            let visualUrl = stagedSaved.url;
+            if (staged.asset.content_type.startsWith('video/')) {
+              const frameKey = `${state.ctx.job.id}/agent/input-video-frame-${iteration}-${i + 1}.jpg`;
+              const framePath = join(cfg.outputsDir, frameKey);
+              yield* ff.extractFrame({ videoPath: stagedSaved.path, outPath: framePath, atSeconds: 1 });
+              const frameSaved = yield* storage.saveFile(frameKey, framePath, 'image/jpeg');
+              visualUrl = frameSaved.url;
+            }
+            const cardUrl = buildCardRenderUrl(cfg.webBaseUrl, state.ctx.job.id, line.text, i + 1, lines.length, visualUrl);
             const png = yield* render.shot({ url: cardUrl, width: 1080, height: 1920, deviceScaleFactor: 1 });
             const cardSaved = yield* storage.saveBytes(`${state.ctx.job.id}/agent/card-${iteration}-${i + 1}.png`, png);
             thumbUrl ??= cardSaved.url;
@@ -289,7 +403,7 @@ export const makeContentAgentRuntime = (state: ContentAgentState) =>
               asset_id: staged.asset.id,
               emotion: line.emotion,
               url: stagedSaved.url,
-              thumbnail_url: stagedSaved.url,
+              thumbnail_url: visualUrl,
               scene_index: i,
             }) as Effect.Effect<void, never, never>;
             const clipPath = join(cfg.outputsDir, `${state.ctx.job.id}/agent/clip-${iteration}-${i + 1}.mp4`);
@@ -342,7 +456,7 @@ export const makeContentAgentRuntime = (state: ContentAgentState) =>
               artifactId: artifact.id,
               filePath: path,
               mimeType: artifact.mimeType ?? 'image/png',
-              prompt: input.prompt ?? `Review this ${artifact.kind} for ${state.ctx.brand.name}.`,
+              prompt: input.prompt ?? defaultReviewPrompt(artifact.kind, state),
               iteration: input.iteration ?? artifact.iteration,
             });
           }
@@ -457,6 +571,8 @@ export const makeContentAgentRuntime = (state: ContentAgentState) =>
           subhead: z.string().max(160).nullable().optional(),
           template: z.enum(['editorial', 'stat', 'listicle', 'quote']).optional(),
           image_prompt: z.string().max(600).nullable().optional(),
+          asset_prompts: z.array(PosterGeneratedAssetSchema).max(4).nullable().optional(),
+          user_assets: z.array(PosterUserAssetSchema).max(4).nullable().optional(),
           iteration: z.number().int().min(1).max(5).optional(),
         }),
         execute: (input) => run(renderPosterDraft(input)).then(toModel),
@@ -466,7 +582,7 @@ export const makeContentAgentRuntime = (state: ContentAgentState) =>
     const videoTools = [
       tool({
         name: 'render_video_draft',
-        description: 'Render a 20-30 second vertical cat-meme explainer draft for VIDEO and REEL jobs. Every line must include an asset_id from /workspace/shared/assets/cats/metadata.json.',
+        description: 'Render a 20-30 second vertical explainer draft for VIDEO and REEL jobs. Every line must include an asset_id from /workspace/shared/assets/input/metadata.json or /workspace/shared/assets/cats/metadata.json.',
         parameters: z.object({
           lines: z.array(z.object({
             text: z.string().min(1).max(110),
@@ -537,12 +653,14 @@ const buildPosterRenderUrl = (
   template: string,
   visibleLayers: readonly string[],
   copy: { headline: string; subhead?: string },
+  assets: PosterRenderAssetWithBlend[],
 ) => {
   const u = new URL(`${base}/render/poster/${jobId}`);
   u.searchParams.set('template', template);
   u.searchParams.set('layers', visibleLayers.join(','));
   u.searchParams.set('headline', copy.headline);
   if (copy.subhead) u.searchParams.set('subhead', copy.subhead);
+  if (assets.length > 0) u.searchParams.set('assets', JSON.stringify(assets.slice(0, 4)));
   return u.toString();
 };
 
@@ -554,3 +672,151 @@ const buildCardRenderUrl = (base: string, jobId: string, line: string, index: nu
   u.searchParams.set('image', imageUrl);
   return u.toString();
 };
+
+const normalizeGeneratedPosterAssets = (input: {
+  headline: string;
+  image_prompt?: string | null;
+  asset_prompts?: PosterGeneratedAssetRequest[] | null;
+}, template: PosterTemplate) => {
+  const explicit = (input.asset_prompts ?? []).slice(0, 4).map((asset, index) => ({
+    prompt: clip(asset.prompt, 280),
+    ...safePlacement(asset, template, index),
+  }));
+  if (explicit.length > 0 || !input.image_prompt?.trim()) return explicit;
+  return [{
+    prompt: clip(input.image_prompt, 280),
+    ...safePlacement(seededPlacement(`${input.headline}:${input.image_prompt}`), template, 0),
+  }];
+};
+
+const normalizeUserPosterAssets = (assets: PosterUserAssetRequest[] | null | undefined, template: PosterTemplate) =>
+  (assets ?? []).slice(0, 4).map((asset, index) => ({
+    asset_id: asset.asset_id,
+    ...safePlacement(asset, template, index),
+  }));
+
+const placementPayload = (asset: PosterAssetPlacement): PosterAssetPlacement => ({
+  x: clamp(asset.x, 0, 92),
+  y: clamp(asset.y, 0, 92),
+  width: clamp(asset.width, 6, 36),
+  rotation: clamp(asset.rotation ?? 0, -24, 24),
+  opacity: asset.opacity === undefined ? undefined : clamp(asset.opacity, 0.25, 1),
+});
+
+const posterAssetPrompt = (prompt: string, state: ContentAgentState) =>
+  [
+    `Create one small isolated decorative asset for a premium social poster for ${state.ctx.brand.name}.`,
+    `Asset request: ${clip(prompt, 280)}.`,
+    'No words, no letters, no numbers, no logo, no watermark, no finished poster, no background scene.',
+    'Make it usable as a cutout or sticker over a designed layout. Transparent or plain light background is preferred.',
+  ].join(' ');
+
+const safePlacement = (asset: PosterAssetPlacement, template: PosterTemplate, index: number): PosterAssetPlacement => {
+  const placement = placementPayload(asset);
+  if (fitsAllowedZone(placement, template)) return placement;
+  const zones = allowedPosterZones(template);
+  const zone = zones[index % zones.length]!;
+  const width = Math.min(placement.width, zone.width, zone.height);
+  const unit = (shift: number) => seededUnit(`${template}:${index}:${placement.x}:${placement.y}:${shift}`);
+  return {
+    ...placement,
+    width,
+    x: zone.x + Math.max(0, zone.width - width) * unit(1),
+    y: zone.y + Math.max(0, zone.height - width) * unit(2),
+  };
+};
+
+const fitsAllowedZone = (asset: PosterAssetPlacement, template: PosterTemplate) =>
+  allowedPosterZones(template).some((zone) => rectContains(zone, placementRect(asset)));
+
+const allowedPosterZones = (template: PosterTemplate): PlacementRect[] => {
+  switch (template) {
+    case 'stat':
+      return [
+        { x: 70, y: 8, width: 22, height: 18 },
+        { x: 72, y: 74, width: 20, height: 14 },
+        { x: 6, y: 74, width: 18, height: 14 },
+      ];
+    case 'listicle':
+      return [
+        { x: 70, y: 6, width: 22, height: 18 },
+        { x: 72, y: 76, width: 18, height: 14 },
+        { x: 6, y: 72, width: 18, height: 16 },
+      ];
+    case 'quote':
+      return [
+        { x: 64, y: 8, width: 24, height: 20 },
+        { x: 8, y: 76, width: 20, height: 16 },
+        { x: 70, y: 72, width: 18, height: 16 },
+      ];
+    case 'editorial':
+    default:
+      return [
+        { x: 66, y: 8, width: 24, height: 30 },
+        { x: 72, y: 46, width: 18, height: 24 },
+        { x: 8, y: 28, width: 16, height: 18 },
+      ];
+  }
+};
+
+const rectContains = (outer: PlacementRect, inner: PlacementRect) =>
+  inner.x >= outer.x
+  && inner.y >= outer.y
+  && inner.x + inner.width <= outer.x + outer.width
+  && inner.y + inner.height <= outer.y + outer.height;
+
+const placementRect = (asset: PosterAssetPlacement): PlacementRect => ({
+  x: asset.x,
+  y: asset.y,
+  width: asset.width,
+  height: asset.width,
+});
+
+const defaultReviewPrompt = (kind: string, state: ContentAgentState) =>
+  kind === 'poster'
+    ? [
+        `Review this poster for ${state.ctx.brand.name}.`,
+        'The layout, typography, and CTA should be designed by the template; generated/user assets should behave like small supporting cutouts.',
+        'Pass only if text is readable at phone size, contrast is strong, brand/CTA are visible, and no asset overlaps or competes with key copy.',
+        'Return pass=false as a revision signal, not a terminal failure, for full-poster AI imagery, cramped type, bad contrast, messy placement, or decorative assets covering the hierarchy.',
+      ].join(' ')
+    : `Review this ${kind} for ${state.ctx.brand.name}.`;
+
+const seededPlacement = (seed: string): PosterAssetPlacement => {
+  return {
+    x: 8 + seededUnit(seed, 1) * 70,
+    y: 6 + seededUnit(seed, 2) * 74,
+    width: 9 + seededUnit(seed, 3) * 13,
+    rotation: -18 + seededUnit(seed, 4) * 36,
+    opacity: 0.9,
+  };
+};
+
+const seededUnit = (seed: string, shift = 0) => {
+  const hash = [...seed].reduce((acc, ch) => ((acc << 5) - acc + ch.charCodeAt(0)) | 0, 0);
+  return Math.abs(Math.sin(hash + shift)) % 1;
+};
+
+const downloadMedia = (url: string) =>
+  Effect.tryPromise({
+    try: async () => {
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`download failed: ${res.status}`);
+      return {
+        bytes: new Uint8Array(await res.arrayBuffer()),
+        contentType: res.headers.get('content-type'),
+      };
+    },
+    catch: toError,
+  });
+
+const extForContentType = (contentType: string) => {
+  if (contentType.includes('jpeg')) return '.jpg';
+  if (contentType.includes('png')) return '.png';
+  if (contentType.includes('webp')) return '.webp';
+  if (contentType.includes('gif')) return '.gif';
+  return '.bin';
+};
+
+const clamp = (value: number, min: number, max: number) =>
+  Math.min(max, Math.max(min, Number.isFinite(value) ? value : min));

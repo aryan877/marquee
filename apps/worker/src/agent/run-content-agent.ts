@@ -193,7 +193,7 @@ const sendBestArtifactToReview = (state: ContentAgentState, rpc: Rpc, cause: unk
     }) as Effect.Effect<void, never, never>;
     yield* state.emit(ProgressStep.Review, 'Ready for manual review', 0.98, {
       manual_review: true,
-      reason: 'video QA was inconclusive; usable artifact exists',
+      reason: 'automated QA was inconclusive; usable artifact exists',
     }) as Effect.Effect<void, never, never>;
     yield* state.emit(ProgressStep.Complete, 'Done', 1, { manual_review: true }) as Effect.Effect<void, never, never>;
     return true;
@@ -220,6 +220,22 @@ const AgentActionSchema = z.discriminatedUnion('action', [
       subhead: z.string().max(160).nullable().optional(),
       template: z.enum(['editorial', 'stat', 'listicle', 'quote']).optional(),
       image_prompt: z.string().max(600).nullable().optional(),
+      asset_prompts: z.array(z.object({
+        prompt: z.string().min(1).max(280),
+        x: z.number().min(0).max(92),
+        y: z.number().min(0).max(92),
+        width: z.number().min(6).max(28),
+        rotation: z.number().min(-24).max(24).optional(),
+        opacity: z.number().min(0.25).max(1).optional(),
+      })).max(4).nullable().optional(),
+      user_assets: z.array(z.object({
+        asset_id: z.string().min(1).max(160),
+        x: z.number().min(0).max(92),
+        y: z.number().min(0).max(92),
+        width: z.number().min(6).max(36),
+        rotation: z.number().min(-24).max(24).optional(),
+        opacity: z.number().min(0.25).max(1).optional(),
+      })).max(4).nullable().optional(),
       iteration: z.number().int().min(1).max(5).optional(),
     }),
   }),
@@ -333,6 +349,7 @@ const nextAgentAction = (args: {
         brand_json: '/workspace/shared/brand.json',
         job_json: '/workspace/shared/job.json',
         cat_metadata: '/workspace/shared/assets/cats/metadata.json',
+        input_asset_metadata: '/workspace/shared/assets/input/metadata.json',
       },
       artifacts: args.artifacts,
       recent_observations: args.history.slice(-10),
@@ -367,6 +384,7 @@ const executeAgentAction = (args: {
     const hasReview = history.some((item) => item.action === 'review_artifact' && item.ok);
     const draftCount = state.artifacts.filter((artifact) => artifact.role === 'draft').length;
     const passedReviewArtifactId = latestPassedReviewArtifactId(history);
+    const reviewedArtifactId = latestReviewedArtifactId(history);
     const latestDraft = [...state.artifacts].reverse().find((artifact) => artifact.role === 'draft');
 
     const blocked = (message: string): AgentObservation => ({
@@ -395,11 +413,14 @@ const executeAgentAction = (args: {
     if (action.action === 'finalize_artifact' && !hasReview) {
       return blocked('review_artifact must pass through the tool layer before finalize_artifact');
     }
-    if (action.action === 'finalize_artifact' && !passedReviewArtifactId) {
-      return blocked('finalize_artifact requires a passing vision review');
+    if (action.action === 'finalize_artifact' && !passedReviewArtifactId && draftCount < maxIterations) {
+      return blocked('vision review requested changes; render one revised draft before finalizing');
     }
-    if (action.action === 'finalize_artifact' && action.args.artifact_id !== passedReviewArtifactId) {
+    if (action.action === 'finalize_artifact' && passedReviewArtifactId && action.args.artifact_id !== passedReviewArtifactId) {
       return blocked(`finalize_artifact must use passing artifact ${passedReviewArtifactId}`);
+    }
+    if (action.action === 'finalize_artifact' && !passedReviewArtifactId && reviewedArtifactId && action.args.artifact_id !== reviewedArtifactId) {
+      return blocked(`finalize_artifact must use the latest reviewed artifact ${reviewedArtifactId}`);
     }
 
     return yield* runActionTool(action, args).pipe(
@@ -490,6 +511,7 @@ const runSubagent = (args: {
             brief: '/workspace/shared/brief.md',
             notes: '/workspace/shared/notes',
             cat_metadata: '/workspace/shared/assets/cats/metadata.json',
+            input_asset_metadata: '/workspace/shared/assets/input/metadata.json',
           },
           artifacts: summarizeArtifacts(args.state),
           parent_observations: args.parentHistory.slice(-6),
@@ -548,18 +570,19 @@ const buildOrchestratorSystem = (isVideo: boolean) => [
   'Do not pretend work happened. If you need a visual, call a render tool. If you need QA, call review_artifact. Finish only with finalize_artifact.',
   'Required lifecycle: inspect/write a short plan if needed, render a draft, review the rendered artifact, revise only if needed, finalize.',
   'If any review_artifact observation has result.pass=true, the next production action must be finalize_artifact for that reviewed artifact. Do not keep revising passed work.',
+  'If a poster/carousel review fails and iterations remain, revise the template, copy, or asset placements and render again. If the final reviewed draft is imperfect but usable, finalize it for manual review instead of failing the job.',
   'Respect max_iterations from the user payload. Never render beyond that draft count; review or finalize existing drafts instead.',
   'Use no more than three workspace_shell calls before the first render. After that, render instead of exploring.',
   'Visual bar: strong hierarchy, high contrast, readable at mobile size, brand visible, no cramped text, no generic stock feel, no one-note palette.',
   'Use emit_budget when cost or long-running behavior matters.',
   isVideo
-    ? 'Available render action: render_video_draft. Use asset IDs from /workspace/shared/assets/cats/metadata.json. Make 3-6 short lines for a 20-30s vertical video.'
-    : 'Available render action: render_poster_draft. Do not inspect cat assets for poster/carousel jobs. Set image_prompt null unless a low-quality Fal asset materially improves the final poster.',
+    ? 'Available render action: render_video_draft. Use asset IDs from /workspace/shared/assets/input/metadata.json when user assets are relevant, otherwise use /workspace/shared/assets/cats/metadata.json. Make 3-6 short lines for a 20-30s vertical video.'
+    : 'Available render action: render_poster_draft. Do not inspect cat assets for poster/carousel jobs. Posters are designed by our Playwright templates; never ask Fal/GPT Image for a finished poster. Use user_assets from /workspace/shared/assets/input/metadata.json when relevant. Use asset_prompts only for 1-4 small no-text decorative cutouts, generated low quality for cost, with creative bounded x/y/width/rotation placements that stay clear of the headline, CTA, and wordmark. The renderer will snap unsafe placements away from protected copy zones, but you should choose clean non-overlapping placements yourself. Set image_prompt null.',
   'Return ONLY valid JSON matching one of these shapes:',
   '{"action":"workspace_shell","reason":"...","args":{"cmd":"..."}}',
   isVideo
     ? '{"action":"render_video_draft","reason":"...","args":{"lines":[{"text":"...","emotion":"...","asset_id":"..."}],"caption":"...","hashtags":["..."],"iteration":1}}'
-    : '{"action":"render_poster_draft","reason":"...","args":{"headline":"...","subhead":"...","template":"editorial","image_prompt":null,"iteration":1}}',
+    : '{"action":"render_poster_draft","reason":"...","args":{"headline":"...","subhead":"...","template":"editorial","image_prompt":null,"user_assets":[{"asset_id":"...","x":12,"y":18,"width":18,"rotation":-6}],"asset_prompts":[{"prompt":"small hand-drawn sparkle icon","x":72,"y":14,"width":9,"rotation":8}],"iteration":1}}',
   '{"action":"review_artifact","reason":"...","args":{"artifact_id":"uuid","prompt":"...","iteration":1}}',
   '{"action":"finalize_artifact","reason":"...","args":{"artifact_id":"uuid","caption":"...","hashtags":["..."]}}',
   '{"action":"delegate_subagent","reason":"...","args":{"agent":"creative_director|production_engineer|visual_critic|video_editor","task":"...","context":"..."}}',
@@ -594,6 +617,15 @@ const latestPassedReviewArtifactId = (history: AgentObservation[]) => {
     if (item.action !== 'review_artifact' || !item.ok || typeof item.result !== 'object' || item.result === null) continue;
     const result = item.result as { pass?: unknown; artifact_id?: unknown };
     if (result.pass === true && typeof result.artifact_id === 'string') return result.artifact_id;
+  }
+  return null;
+};
+
+const latestReviewedArtifactId = (history: AgentObservation[]) => {
+  for (const item of [...history].reverse()) {
+    if (item.action !== 'review_artifact' || !item.ok || typeof item.result !== 'object' || item.result === null) continue;
+    const result = item.result as { artifact_id?: unknown };
+    if (typeof result.artifact_id === 'string') return result.artifact_id;
   }
   return null;
 };

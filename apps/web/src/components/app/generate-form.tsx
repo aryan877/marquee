@@ -1,12 +1,14 @@
 'use client';
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
+import { Upload, X } from 'lucide-react';
 import { cn } from '@/lib/cn';
 import { AiFillButton } from '@/components/app/ai-fill-button';
 import { coerceBrandPalette } from '@marquee/shared/palettes';
 import type { BrandListPage } from '@/hooks/queries';
 import { usePaginatedBrands } from '@/hooks/queries';
 import type { Database } from '@marquee/db';
+import type { JobInputAsset } from '@marquee/shared/schemas';
 
 type ContentType = Database['public']['Enums']['ContentType'];
 
@@ -24,9 +26,38 @@ export function GenerateForm({ initialBrandsPage }: { initialBrandsPage: BrandLi
  const [brandId, setBrandId] = useState(brands[0]?.id ?? '');
  const [type, setType] = useState<ContentType>('POSTER');
  const [topic, setTopic] = useState('');
+ const [assets, setAssets] = useState<JobInputAsset[]>([]);
+ const [uploading, setUploading] = useState(false);
  const [error, setError] = useState<string | null>(null);
  const [pending, start] = useTransition();
  const activeBrand = brands.find((b) => b.id === brandId) ?? null;
+
+ async function uploadFiles(files: FileList | null) {
+ if (!files?.length || !brandId) return;
+ setError(null);
+ setUploading(true);
+ try {
+ const next: JobInputAsset[] = [];
+ for (const file of Array.from(files).slice(0, 8 - assets.length)) {
+ const form = new FormData();
+ form.append('brand_id', brandId);
+ form.append('file', file);
+ const res = await fetch('/api/assets/job-input', { method: 'POST', body: form });
+ const body = await res.json().catch(() => ({}));
+ if (!res.ok) throw new Error(body.error ?? 'Upload failed');
+ next.push(body.asset as JobInputAsset);
+ }
+ setAssets((current) => [...current, ...next].slice(0, 8));
+ } catch (err) {
+ setError(err instanceof Error ? err.message : 'Upload failed');
+ } finally {
+ setUploading(false);
+ }
+ }
+
+ function updateAsset(id: string, patch: Partial<Pick<JobInputAsset, 'description' | 'usage_hint'>>) {
+ setAssets((current) => current.map((asset) => asset.id === id ? { ...asset, ...patch } : asset));
+ }
 
  async function submit() {
  setError(null);
@@ -39,6 +70,7 @@ export function GenerateForm({ initialBrandsPage }: { initialBrandsPage: BrandLi
  brand_id: brandId,
  content_type: type,
  topic: topic.trim() || undefined,
+ assets,
  }),
  });
  if (!res.ok) {
@@ -117,6 +149,73 @@ export function GenerateForm({ initialBrandsPage }: { initialBrandsPage: BrandLi
  </section>
 
  <section>
+ <div className="flex items-end justify-between gap-4">
+ <div>
+ <h3 className="font-mono text-xs tracking-[0.2em] text-[var(--color-ink-3)]">Assets (optional)</h3>
+ <p className="mt-1 text-sm text-[var(--color-ink-3)]">
+ Upload screenshots, product shots, demo clips, or reference docs. The agent reads your notes and uses them where they fit.
+ </p>
+ </div>
+ <label
+ className={cn(
+ 'inline-flex cursor-pointer items-center gap-2 rounded-full border border-[var(--color-border-strong)] px-4 py-2 text-sm hover:bg-[var(--color-paper-2)]',
+ (!brandId || uploading || assets.length >= 8) && 'pointer-events-none opacity-50',
+ )}
+ >
+ <Upload className="h-4 w-4" />
+ {uploading ? 'Uploading...' : 'Add assets'}
+ <input
+ type="file"
+ multiple
+ accept="image/png,image/jpeg,image/webp,image/gif,video/mp4,video/webm,video/quicktime,application/pdf"
+ className="hidden"
+ disabled={!brandId || uploading || assets.length >= 8}
+ onChange={(e) => {
+ void uploadFiles(e.target.files);
+ e.currentTarget.value = '';
+ }}
+ />
+ </label>
+ </div>
+ {assets.length > 0 && (
+ <div className="mt-3 space-y-3">
+ {assets.map((asset) => (
+ <div key={asset.id} className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-3">
+ <div className="flex items-start justify-between gap-3">
+ <div className="min-w-0">
+ <div className="truncate text-sm font-medium">{asset.file_name}</div>
+ <div className="mt-0.5 font-mono text-xs text-[var(--color-ink-3)]">{asset.kind} · {formatBytes(asset.size)}</div>
+ </div>
+ <button
+ type="button"
+ onClick={() => setAssets((current) => current.filter((item) => item.id !== asset.id))}
+ className="rounded-full p-1 text-[var(--color-ink-3)] hover:bg-[var(--color-paper-2)] hover:text-[var(--color-ink)]"
+ aria-label={`Remove ${asset.file_name}`}
+ >
+ <X className="h-4 w-4" />
+ </button>
+ </div>
+ <div className="mt-3 grid gap-2 md:grid-cols-2">
+ <input
+ value={asset.description ?? ''}
+ onChange={(e) => updateAsset(asset.id, { description: e.target.value })}
+ placeholder="What is this asset?"
+ className="rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-[var(--color-paper)] px-3 py-2 text-sm focus:border-[var(--color-ink)] focus:outline-none"
+ />
+ <input
+ value={asset.usage_hint ?? ''}
+ onChange={(e) => updateAsset(asset.id, { usage_hint: e.target.value })}
+ placeholder="How should the agent use it?"
+ className="rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-[var(--color-paper)] px-3 py-2 text-sm focus:border-[var(--color-ink)] focus:outline-none"
+ />
+ </div>
+ </div>
+ ))}
+ </div>
+ )}
+ </section>
+
+ <section>
  <label htmlFor="generation-topic" className="font-mono text-xs tracking-[0.2em] text-[var(--color-ink-3)]">
  Topic (optional)
  </label>
@@ -164,7 +263,7 @@ export function GenerateForm({ initialBrandsPage }: { initialBrandsPage: BrandLi
  <div className="flex items-center justify-end gap-3">
  <button
  onClick={submit}
- disabled={pending || !brandId}
+ disabled={pending || uploading || !brandId}
  className="inline-flex items-center gap-2 rounded-full bg-[var(--color-ink)] px-6 py-3 text-base text-[var(--color-paper)] hover:bg-[var(--color-ink-2)] disabled:opacity-50"
  >
  {pending ? 'Submitting…' : 'Start generation'}
@@ -173,4 +272,10 @@ export function GenerateForm({ initialBrandsPage }: { initialBrandsPage: BrandLi
  </div>
  </div>
  );
+}
+
+function formatBytes(value: number) {
+ if (value < 1024) return `${value} B`;
+ if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
+ return `${(value / (1024 * 1024)).toFixed(1)} MB`;
 }

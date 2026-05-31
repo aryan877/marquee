@@ -1,6 +1,7 @@
-import { readPalette, readFonts, type TemplateProps } from '../template-shared';
+import { PosterDecorations } from '../poster-decorations';
+import { contentLayerStyle, readPalette, readFonts, type TemplateProps } from '../template-shared';
 
-export function ListicleTemplate({ brand, headline, subhead, visible }: TemplateProps) {
+export function ListicleTemplate({ brand, headline, subhead, visible, assets }: TemplateProps) {
   const palette = readPalette(brand);
   const fonts = readFonts(brand);
   const items = (subhead ?? '').split(/\s*\|\s*|\s*;\s*|\n+/).map((s) => s.trim()).filter(Boolean).slice(0, 5);
@@ -17,9 +18,10 @@ export function ListicleTemplate({ brand, headline, subhead, visible }: Template
       padding: 96,
       display: 'flex', flexDirection: 'column', gap: 56,
     }}>
+      <PosterDecorations assets={assets} />
       {visible.has('wordmark') && (
-        <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <span style={{ fontFamily: fonts.heading, fontSize: 28, letterSpacing: '-0.04em', color: palette.primary }}>
+        <header style={{ ...contentLayerStyle, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span style={{ fontFamily: fonts.heading, fontSize: 28, letterSpacing: 0, color: palette.primary }}>
             {brand.name.toLowerCase()}.
           </span>
           <span style={{ fontFamily: 'monospace', fontSize: 18, opacity: 0.6 }}>
@@ -29,6 +31,7 @@ export function ListicleTemplate({ brand, headline, subhead, visible }: Template
       )}
       {visible.has('headline') && (
         <h1 style={{
+          ...contentLayerStyle,
           fontFamily: fonts.heading,
           fontSize: 96,
           lineHeight: 0.95,
@@ -42,7 +45,7 @@ export function ListicleTemplate({ brand, headline, subhead, visible }: Template
         </h1>
       )}
       {visible.has('accent') && (
-        <ol style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: 28 }}>
+        <ol style={{ ...contentLayerStyle, listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: 28 }}>
           {list.map((item, i) => (
             <li key={i} style={{ display: 'flex', gap: 32, alignItems: 'baseline' }}>
               <span style={{

@@ -18,7 +18,7 @@ VPS deploy target: SSH alias `hackathon-server`, repo `/opt/marquee`, worker ser
 | LLM | OpenRouter (single `OPENROUTER_MODEL`, default `xiaomi/mimo-v2.5`) |
 | TTS | `msedge-tts` (pure Node, no Python) |
 | Video | ffmpeg + Playwright stills (NOT Remotion) |
-| Posters | Fal AI `openai/gpt-image-2` assets + Playwright screenshots Next.js `/render/poster/[id]` route |
+| Posters | Playwright-designed templates + low-quality Fal AI `openai/gpt-image-2` decorative cutouts, rendered through Next.js `/render/poster/[id]` |
 | Social | `@atproto/api` for Bluesky (server-side, no Playwright) |
 | Storage | Local FS in dev; R2 in prod. Worker serves `/outputs/` itself |
 | Payments | Dodo Payments — Founder Pass $50/mo |
@@ -48,12 +48,12 @@ marquee/
 ## The demo loop
 
 1. `/signup` → email/password → `/app/onboarding` (4-step brand wizard)
-2. `/app/generate` → pick brand, type (POSTER | VIDEO | CAROUSEL | REEL), topic, platforms
-3. `POST /api/jobs` calls `submit_content_job` RPC (atomic quota deduct + PENDING insert + `pgmq.send` in one TX), mints a short-lived JWT scoped to `job_id`, returns `{job_id, ws_url, token}`
+2. `/app/generate` → pick brand, type (POSTER | VIDEO | CAROUSEL | REEL), topic, optional input assets
+3. `POST /api/jobs` calls `submit_content_job` RPC (atomic quota deduct + PENDING insert + `pgmq.send` in one TX), stores input asset metadata in `content_jobs.metadata.input_assets`, mints a short-lived JWT scoped to `job_id`, returns `{job_id, ws_url, token}`
 4. Browser navigates to `/app/jobs/[id]` (Studio) and opens the WS to the worker
 5. Worker queue consumer polls `read_next_content_job(vt=300)`, then the server-side content agent runs:
    - Agent plans with the single OpenRouter `OPENROUTER_MODEL` (default MiMo), calls bounded tools, renders drafts, reviews visual output with vision, revises if needed, and finalizes.
-   - Poster tools can request Fal AI `openai/gpt-image-2` assets (`FAL_KEY`) and render Playwright poster drafts.
+   - Poster tools render Playwright-designed poster drafts; they may request small low-quality Fal AI `openai/gpt-image-2` decorative cutouts (`FAL_KEY`) but never full poster images.
    - Video tools make 20–30s vertical cat explainers from short lines, msedge-tts, Playwright cards, and ffmpeg clips.
    - Tools still emit `poster:layer`, `script:line`, `tts:chunk`, `asset:fetch`, `render:frame`, `render:done` events plus agent/artifact/vision events.
 6. Agent sets status REVIEW, Studio shows "Approve & Post" CTA
@@ -137,7 +137,7 @@ Agent runtime files:
 - `apps/worker/src/agent/provider.ts` builds the OpenRouter-compatible Agents SDK provider.
 - `apps/worker/src/agent/tools.ts` exposes bounded tools: `render_poster_draft`, `render_video_draft`, `review_artifact`, `finalize_artifact`, `emit_budget`.
 - `apps/worker/src/lib/vision.ts` reviews local image bytes or sampled video frames with the same `OPENROUTER_MODEL`.
-- `apps/worker/src/lib/fal-image.ts` calls Fal AI image generation through `FAL_KEY` and `FAL_IMAGE_MODEL`.
+- `apps/worker/src/lib/fal-image.ts` calls Fal AI image generation through `FAL_KEY` and `FAL_IMAGE_MODEL`; poster use is decorative low-quality cutouts only.
 - `apps/worker/src/lib/agent-budget.ts` enforces `AGENT_DAILY_USD_CAP` and `AGENT_JOB_USD_CAP`.
 
 Rules:
@@ -161,6 +161,8 @@ PGMQ queue `content_jobs`. Worker polls `read_next_content_job(vt=300)` every 75
 Dev: local filesystem at `/tmp/marquee-outputs/<job_id>/...`. Worker hosts a static file server on the SAME port as the WS (`:4001/outputs/...`) so the Studio can `<img src=…>` directly. CORS open.
 
 Prod: swap `Storage.saveBytes` to write to R2; URL becomes `${R2_PUBLIC_URL}/<key>`.
+
+User-provided generation inputs upload to R2 through `/api/assets/job-input`; the worker downloads them into `/workspace/shared/assets/input/metadata.json` before the agent starts.
 
 ## LLM
 
@@ -243,7 +245,7 @@ curl -X POST http://localhost:4002/emit/<job_id> -d '{"step":"script:line","mess
 
 - **Green-screen cat MP4s** — current catalog is real still images in `apps/worker/assets/cats/imgflip`. For motion clips, add curated MP4s under `apps/worker/assets/cats/clips/` and wire an ffmpeg chroma-key step.
 - **Whisper word-level captions** — video uses line-level timing from TTS duration. For per-word burned captions, add whisper.cpp call after each `tts.speak()` and emit `caption:align` with word timings; render captions in `/render/video/card/[id]`.
-- **R2 storage** — `Storage.saveBytes` writes local FS only. Add an R2 branch when `R2_*` env present.
+- **Custom asset library** — input uploads are per-job only. Brand-level reusable assets still need a library page/table.
 - **Autopilot auto-publish** — `sweep_autopilot` enqueues jobs from `campaigns.next_run_at`, but Founder Pass `auto_publish` branch in `/api/jobs/[id]/approve` (post automatically, skip REVIEW) isn't wired. Default = manual approval, as documented.
 - **IG/TikTok/X/LinkedIn posting** — only Bluesky lives in `lib/bluesky.ts`. UI shows the others as "soon".
 - **Worker container image** — `Dockerfile` not written. For prod, base off `node:22-bookworm-slim`, install chromium deps + ffmpeg.

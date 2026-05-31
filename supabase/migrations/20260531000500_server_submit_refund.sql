@@ -35,6 +35,7 @@ GRANT EXECUTE ON FUNCTION public.get_profile_for_job_submit(UUID) TO service_rol
 -- ─── submit_content_job ───
 DROP FUNCTION IF EXISTS public.submit_content_job(UUID, UUID, public."ContentType", TEXT, public."SocialPlatform"[], INT, UUID);
 DROP FUNCTION IF EXISTS public.submit_content_job(UUID, UUID, public."ContentType", public."SocialPlatform"[], INT, TEXT, UUID);
+DROP FUNCTION IF EXISTS public.submit_content_job(UUID, UUID, public."ContentType", public."SocialPlatform"[], INT, TEXT, UUID, JSONB);
 CREATE FUNCTION public.submit_content_job(
   p_user_id      UUID,
   p_brand_id     UUID,
@@ -42,7 +43,8 @@ CREATE FUNCTION public.submit_content_job(
   p_platforms    public."SocialPlatform"[],
   p_post_budget  INT,
   p_topic        TEXT DEFAULT NULL,
-  p_campaign_id  UUID DEFAULT NULL
+  p_campaign_id  UUID DEFAULT NULL,
+  p_metadata     JSONB DEFAULT '{}'::JSONB
 )
 RETURNS UUID
 LANGUAGE plpgsql SECURITY DEFINER
@@ -96,12 +98,12 @@ BEGIN
 
   INSERT INTO public.content_jobs (
     user_id, brand_id, campaign_id, status, content_type, topic, platforms,
-    queue_plan, queue_priority
+    queue_plan, queue_priority, metadata
   )
   VALUES (
     p_user_id, p_brand_id, p_campaign_id, 'PENDING'::public."ContentJobStatus",
     p_content_type, p_topic, COALESCE(p_platforms, ARRAY[]::public."SocialPlatform"[]),
-    v_queue_plan, v_queue_priority
+    v_queue_plan, v_queue_priority, COALESCE(p_metadata, '{}'::JSONB)
   )
   RETURNING id INTO v_job_id;
 
@@ -113,7 +115,11 @@ BEGIN
     'queued',
     'Job queued. Waiting for the next available worker…',
     0,
-    jsonb_build_object('queue_plan', v_queue_plan, 'queue_priority', v_queue_priority)
+    jsonb_build_object(
+      'queue_plan', v_queue_plan,
+      'queue_priority', v_queue_priority,
+      'input_asset_count', jsonb_array_length(COALESCE(p_metadata->'input_assets', '[]'::JSONB))
+    )
   );
 
   PERFORM pgmq.send(
@@ -131,9 +137,9 @@ BEGIN
 END;
 $$;
 
-REVOKE ALL ON FUNCTION public.submit_content_job(UUID, UUID, public."ContentType", public."SocialPlatform"[], INT, TEXT, UUID)
+REVOKE ALL ON FUNCTION public.submit_content_job(UUID, UUID, public."ContentType", public."SocialPlatform"[], INT, TEXT, UUID, JSONB)
   FROM PUBLIC, anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.submit_content_job(UUID, UUID, public."ContentType", public."SocialPlatform"[], INT, TEXT, UUID)
+GRANT EXECUTE ON FUNCTION public.submit_content_job(UUID, UUID, public."ContentType", public."SocialPlatform"[], INT, TEXT, UUID, JSONB)
   TO service_role;
 
 -- ─── refund_content_job (idempotent) ───

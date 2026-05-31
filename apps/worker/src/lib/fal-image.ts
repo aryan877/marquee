@@ -48,7 +48,7 @@ export class FalImage extends Effect.Service<FalImage>()('FalImage', {
             input: {
               prompt: args.prompt,
               image_size: args.imageSize ?? 'portrait_4_3',
-              quality: args.quality ?? 'medium',
+              quality: args.quality ?? 'low',
               num_images: 1,
               output_format: args.outputFormat ?? 'png',
             },

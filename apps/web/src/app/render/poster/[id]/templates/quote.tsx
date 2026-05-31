@@ -1,6 +1,7 @@
-import { readPalette, readFonts, type TemplateProps } from '../template-shared';
+import { PosterDecorations } from '../poster-decorations';
+import { contentLayerStyle, readPalette, readFonts, type TemplateProps } from '../template-shared';
 
-export function QuoteTemplate({ brand, headline, subhead, visible }: TemplateProps) {
+export function QuoteTemplate({ brand, headline, subhead, visible, assets }: TemplateProps) {
   const palette = readPalette(brand);
   const fonts = readFonts(brand);
 
@@ -13,8 +14,10 @@ export function QuoteTemplate({ brand, headline, subhead, visible }: TemplatePro
       padding: 120,
       display: 'flex', flexDirection: 'column', justifyContent: 'center',
     }}>
+      <PosterDecorations assets={assets} />
       {visible.has('accent') && (
         <span style={{
+          ...contentLayerStyle,
           fontFamily: 'Instrument Serif, serif',
           fontSize: 360, lineHeight: 0.6, color: palette.accent,
           alignSelf: 'flex-start', marginBottom: -40,
@@ -24,6 +27,7 @@ export function QuoteTemplate({ brand, headline, subhead, visible }: TemplatePro
       )}
       {visible.has('headline') && (
         <blockquote style={{
+          ...contentLayerStyle,
           margin: 0,
           fontFamily: 'Instrument Serif, serif',
           fontSize: 96, lineHeight: 1.06,
@@ -34,6 +38,7 @@ export function QuoteTemplate({ brand, headline, subhead, visible }: TemplatePro
       )}
       {visible.has('wordmark') && (
         <footer style={{
+          ...contentLayerStyle,
           marginTop: 64, fontFamily: fonts.body, fontSize: 24, color: palette.secondary,
           display: 'flex', alignItems: 'center', gap: 16,
         }}>

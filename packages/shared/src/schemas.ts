@@ -80,10 +80,25 @@ const ContentTypeSchema = z.enum([
   'REEL',
 ]);
 
+export const JobInputAssetSchema = z.object({
+  id:          z.string().uuid(),
+  url:         z.string().url(),
+  key:         z.string().min(1).max(500),
+  file_name:   z.string().min(1).max(160),
+  mime_type:   z.string().min(1).max(120),
+  size:        z.number().int().min(1).max(50 * 1024 * 1024),
+  kind:        z.enum(['image', 'video', 'document', 'other']),
+  description: z.string().max(500).optional(),
+  usage_hint:  z.string().max(300).optional(),
+});
+
+export type JobInputAsset = z.infer<typeof JobInputAssetSchema>;
+
 export const SubmitJobSchema = z.object({
   brand_id:     z.string().uuid(),
   content_type: ContentTypeSchema,
   topic:        z.string().min(1).max(300).optional(),
   platforms:    z.array(z.enum(LIVE_SOCIAL_PLATFORMS)).max(LIVE_SOCIAL_PLATFORMS.length).default([]),
   campaign_id:  z.string().uuid().optional(),
+  assets:       z.array(JobInputAssetSchema).max(8).default([]),
 });

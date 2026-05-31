@@ -4,6 +4,7 @@ import { EditorialTemplate } from './templates/editorial';
 import { StatTemplate } from './templates/stat';
 import { ListicleTemplate } from './templates/listicle';
 import { QuoteTemplate } from './templates/quote';
+import type { PosterRenderAsset } from './template-shared';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -13,6 +14,7 @@ interface SearchParams {
   layers?: string;
   headline?: string;
   subhead?: string;
+  assets?: string;
 }
 
 export default async function PosterRender({
@@ -37,8 +39,9 @@ export default async function PosterRender({
   const template = sp.template ?? 'editorial';
   const headline = sp.headline ?? job.topic ?? brand.name;
   const subhead  = sp.subhead;
+  const assets = parsePosterAssets(sp.assets);
 
-  const props = { brand, job, headline, subhead, visible };
+  const props = { brand, job, headline, subhead, visible, assets };
   return (
     <main className="poster-stage">
       {template === 'stat'     ? <StatTemplate {...props} /> :
@@ -52,4 +55,43 @@ export default async function PosterRender({
       `}</style>
     </main>
   );
+}
+
+function parsePosterAssets(value: string | undefined): PosterRenderAsset[] {
+  if (!value) return [];
+  try {
+    const parsed = JSON.parse(value);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.slice(0, 4).flatMap((item) => {
+      if (!item || typeof item !== 'object') return [];
+      const record = item as Record<string, unknown>;
+      if (typeof record.url !== 'string' || !isSafeMediaUrl(record.url)) return [];
+      return [{
+        url: record.url,
+        x: clampNumber(record.x, 0, 92, 50),
+        y: clampNumber(record.y, 0, 92, 50),
+        width: clampNumber(record.width, 6, 40, 14),
+        rotation: clampNumber(record.rotation, -24, 24, 0),
+        opacity: clampNumber(record.opacity, 0.25, 1, 0.92),
+        blend: record.blend === 'multiply' ? 'multiply' : 'normal',
+      }];
+    });
+  } catch {
+    return [];
+  }
+}
+
+function isSafeMediaUrl(value: string) {
+  try {
+    const url = new URL(value);
+    return url.protocol === 'https:' || url.protocol === 'http:';
+  } catch {
+    return value.startsWith('/outputs/');
+  }
+}
+
+function clampNumber(value: unknown, min: number, max: number, fallback: number) {
+  const n = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.min(max, Math.max(min, n));
 }

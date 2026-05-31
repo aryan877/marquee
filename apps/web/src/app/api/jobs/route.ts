@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { z } from 'zod';
 import { SubmitJobSchema } from '@marquee/shared/schemas';
 import { postBudgetFor, getPlan } from '@marquee/shared/billing';
+import type { Json } from '@marquee/db';
 import { pageFromRows, parseCursorParams } from '@/lib/api/pagination';
 import { requireUser, getSupabaseAdmin, getSupabaseServer } from '@/lib/supabase/server';
 import { mintJobToken, workerWsUrl } from '@/lib/ws-token';
@@ -68,6 +69,7 @@ export async function POST(request: NextRequest) {
     p_post_budget: number;
     p_topic?: string;
     p_campaign_id?: string;
+    p_metadata?: Json;
   } = {
     p_user_id:      user.id,
     p_brand_id:     parsed.data.brand_id,
@@ -77,6 +79,9 @@ export async function POST(request: NextRequest) {
   };
   if (parsed.data.topic)       rpcArgs.p_topic       = parsed.data.topic;
   if (parsed.data.campaign_id) rpcArgs.p_campaign_id = parsed.data.campaign_id;
+  if (parsed.data.assets.length > 0) {
+    rpcArgs.p_metadata = { input_assets: parsed.data.assets } as Json;
+  }
 
   const { data: jobId, error } = await admin.rpc('submit_content_job', rpcArgs);
 

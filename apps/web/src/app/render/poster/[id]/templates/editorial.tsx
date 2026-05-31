@@ -1,6 +1,7 @@
-import { readPalette, readFonts, type TemplateProps } from '../template-shared';
+import { PosterDecorations } from '../poster-decorations';
+import { contentLayerStyle, readPalette, readFonts, type TemplateProps } from '../template-shared';
 
-export function EditorialTemplate({ brand, headline, subhead, visible }: TemplateProps) {
+export function EditorialTemplate({ brand, headline, subhead, visible, assets }: TemplateProps) {
   const palette = readPalette(brand);
   const fonts = readFonts(brand);
   const headlineSize = headline.length > 34 ? 92 : headline.length > 22 ? 108 : 132;
@@ -57,9 +58,10 @@ export function EditorialTemplate({ brand, headline, subhead, visible }: Templat
           />
         </>
       )}
+      <PosterDecorations assets={assets} />
 
       {visible.has('wordmark') && (
-        <header style={{ position: 'relative', zIndex: 1, display: 'flex', alignItems: 'center', gap: 12 }}>
+        <header style={{ ...contentLayerStyle, display: 'flex', alignItems: 'center', gap: 12 }}>
           <div
             style={{
               width: 12, height: 12, borderRadius: '999px',
@@ -79,7 +81,7 @@ export function EditorialTemplate({ brand, headline, subhead, visible }: Templat
       )}
 
       {visible.has('headline') && (
-        <div style={{ position: 'relative', zIndex: 1, marginTop: 'auto', maxWidth: 610 }}>
+        <div style={{ ...contentLayerStyle, marginTop: 'auto', maxWidth: 610 }}>
           <h1
             style={{
               fontFamily: fonts.heading,
@@ -115,8 +117,7 @@ export function EditorialTemplate({ brand, headline, subhead, visible }: Templat
 
       {visible.has('accent') && (
         <footer style={{
-          position: 'relative',
-          zIndex: 1,
+          ...contentLayerStyle,
           marginTop: 64,
           display: 'flex',
           alignItems: 'center',

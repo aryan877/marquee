@@ -1053,6 +1053,7 @@ export type Database = {
           p_brand_id: string
           p_campaign_id?: string
           p_content_type: Database["public"]["Enums"]["ContentType"]
+          p_metadata?: Json
           p_platforms: Database["public"]["Enums"]["SocialPlatform"][]
           p_post_budget: number
           p_topic?: string
