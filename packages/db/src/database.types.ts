@@ -503,6 +503,59 @@ export type Database = {
           },
         ]
       }
+      whatsapp_accounts: {
+        Row: {
+          created_at: string
+          display_name: string | null
+          id: string
+          jid: string | null
+          last_connected_at: string | null
+          last_qr_at: string | null
+          last_send_at: string | null
+          phone_e164: string | null
+          session_enc: string | null
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          display_name?: string | null
+          id?: string
+          jid?: string | null
+          last_connected_at?: string | null
+          last_qr_at?: string | null
+          last_send_at?: string | null
+          phone_e164?: string | null
+          session_enc?: string | null
+          status?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          display_name?: string | null
+          id?: string
+          jid?: string | null
+          last_connected_at?: string | null
+          last_qr_at?: string | null
+          last_send_at?: string | null
+          phone_e164?: string | null
+          session_enc?: string | null
+          status?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "whatsapp_accounts_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       worker_heartbeat: {
         Row: {
           id: number
@@ -569,6 +622,10 @@ export type Database = {
           p_width?: number
         }
         Returns: string
+      }
+      disconnect_whatsapp_delivery_account: {
+        Args: { p_user_id: string }
+        Returns: undefined
       }
       emit_progress_event: {
         Args: {
@@ -891,6 +948,35 @@ export type Database = {
           session: string
         }[]
       }
+      get_whatsapp_account: {
+        Args: never
+        Returns: {
+          display_name: string
+          id: string
+          jid: string
+          last_connected_at: string
+          last_qr_at: string
+          last_send_at: string
+          phone_e164: string
+          status: string
+          updated_at: string
+        }[]
+      }
+      get_whatsapp_delivery_session_for_service: {
+        Args: { p_user_id: string }
+        Returns: {
+          display_name: string
+          id: string
+          jid: string
+          last_connected_at: string
+          last_qr_at: string
+          last_send_at: string
+          phone_e164: string
+          session_enc: string
+          status: string
+          user_id: string
+        }[]
+      }
       has_completed_onboarding: { Args: never; Returns: boolean }
       mark_content_job_approved: {
         Args: { p_job_id: string }
@@ -898,6 +984,10 @@ export type Database = {
       }
       mark_webhook_processed: {
         Args: { p_error_message?: string; p_webhook_id: string }
+        Returns: undefined
+      }
+      mark_whatsapp_delivery_sent: {
+        Args: { p_user_id: string }
         Returns: undefined
       }
       queue_position: { Args: { p_job_id: string }; Returns: number }
@@ -1012,6 +1102,17 @@ export type Database = {
           p_session_enc?: string
         }
         Returns: string
+      }
+      upsert_whatsapp_delivery_account: {
+        Args: {
+          p_display_name?: string
+          p_jid?: string
+          p_phone_e164?: string
+          p_session_enc?: string
+          p_status?: string
+          p_user_id: string
+        }
+        Returns: undefined
       }
     }
     Enums: {

@@ -8,7 +8,7 @@ import type { ContentAgentState } from '../agent/types.js';
 
 export interface VisionReview {
   pass: boolean;
-  score: number;
+  score: number | null;
   issues: string[];
   suggested_edits: string[];
   risk_flags: string[];
@@ -16,14 +16,36 @@ export interface VisionReview {
 
 const parseReview = (text: string): VisionReview => {
   const cleaned = text.replace(/^```(?:json)?\s*|\s*```$/g, '').trim();
-  const parsed = JSON.parse(cleaned) as Partial<VisionReview>;
+  const parsed = parseJsonObject(cleaned);
+  const score = Number(parsed.score);
   return {
-    pass: Boolean(parsed.pass),
-    score: Math.max(0, Math.min(1, Number(parsed.score ?? 0))),
+    pass: parsed.pass === true,
+    score: Number.isFinite(score) ? Math.max(0, Math.min(1, score)) : null,
     issues: Array.isArray(parsed.issues) ? parsed.issues.map(String).slice(0, 6) : [],
     suggested_edits: Array.isArray(parsed.suggested_edits) ? parsed.suggested_edits.map(String).slice(0, 6) : [],
     risk_flags: Array.isArray(parsed.risk_flags) ? parsed.risk_flags.map(String).slice(0, 6) : [],
   };
+};
+
+const parseJsonObject = (text: string): Partial<VisionReview> => {
+  try {
+    return JSON.parse(text) as Partial<VisionReview>;
+  } catch {
+    const start = text.indexOf('{');
+    const end = text.lastIndexOf('}');
+    if (start >= 0 && end > start) {
+      try {
+        return JSON.parse(text.slice(start, end + 1)) as Partial<VisionReview>;
+      } catch {}
+    }
+    return {
+      pass: false,
+      score: null,
+      issues: ['Vision review returned unreadable output.'],
+      suggested_edits: ['Manual review required.'],
+      risk_flags: ['invalid_review_output'],
+    };
+  }
 };
 
 export class Vision extends Effect.Service<Vision>()('Vision', {
@@ -50,6 +72,7 @@ export class Vision extends Effect.Service<Vision>()('Vision', {
       mimeType?: string;
       prompt: string;
       iteration: number;
+      reviewScope?: 'image' | 'sampled_video_frame';
     }) =>
       Effect.gen(function* () {
         const estimate = 0.005;
@@ -66,7 +89,7 @@ export class Vision extends Effect.Service<Vision>()('Vision', {
               messages: [
                 {
                   role: 'system',
-                  content: 'You are Marquee visual QA. Return only JSON: {"pass":boolean,"score":0..1,"issues":string[],"suggested_edits":string[],"risk_flags":string[]}. Judge brand fit, readability, composition, and social-post quality.',
+                  content: 'You are Marquee visual QA. Return only JSON: {"pass":boolean,"score":0..1,"issues":string[],"suggested_edits":string[],"risk_flags":string[]}. Judge only what is visible in the supplied image: brand fit, readability, composition, and social-post quality. If this is a sampled video frame, do not claim you reviewed motion, timing, audio, or the whole video.',
                 },
                 {
                   role: 'user',
@@ -97,6 +120,8 @@ export class Vision extends Effect.Service<Vision>()('Vision', {
           score: review.score,
           issues: review.issues,
           suggested_edits: review.suggested_edits,
+          risk_flags: review.risk_flags,
+          review_scope: args.reviewScope ?? 'image',
           iteration: args.iteration,
         }) as Effect.Effect<void, never, never>;
         return review;

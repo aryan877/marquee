@@ -3,6 +3,7 @@ import { pageFromRows } from '@/lib/api/pagination';
 import { getSupabaseServer } from '@/lib/supabase/server';
 import { SettingsTabs } from '../settings-tabs';
 import { SocialPlatformsList } from './social-platforms-list';
+import { WhatsappConnect } from './whatsapp-connect';
 
 export default async function SocialPage() {
   const sb = await getSupabaseServer();
@@ -22,6 +23,7 @@ export default async function SocialPage() {
         </p>
         <SettingsTabs active="/app/settings/social" />
 
+        <WhatsappConnect />
         <SocialPlatformsList initialPage={initialPage} />
       </div>
     </div>

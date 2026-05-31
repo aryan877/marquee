@@ -18,26 +18,27 @@ datasource db {
 // auth.users DELETE trigger cascades back. See 10_rls_and_triggers.sql.
 
 model profiles {
-  id                   String   @id @db.Uuid
+  id                   String    @id @db.Uuid
   email                String
   username             String?
   avatar_url           String?
   // FREE | FOUNDER. TEXT not enum — adding plans is a code-only change
   // in @marquee/shared/billing. /api/checkout validates against PLANS
   // before writing.
-  plan                 String   @default("FREE")
+  plan                 String    @default("FREE")
   // Per-period quota counter (e.g. autopilot posts used this month).
-  posts_used_period    Int      @default(0)
+  posts_used_period    Int       @default(0)
   period_ends_at       DateTime? @db.Timestamptz
-  cancel_at_period_end Boolean  @default(false)
+  cancel_at_period_end Boolean   @default(false)
   banned_at            DateTime? @db.Timestamptz
   ban_reason           String?
   dodo_customer_id     String?
   dodo_subscription_id String?
-  created_at           DateTime @default(now()) @db.Timestamptz
-  updated_at           DateTime @default(now()) @updatedAt @db.Timestamptz
+  created_at           DateTime  @default(now()) @db.Timestamptz
+  updated_at           DateTime  @default(now()) @updatedAt @db.Timestamptz
 
-  brands brands[]
+  brands           brands[]
+  whatsapp_account whatsapp_accounts?
 
   @@index([dodo_subscription_id])
 }
@@ -93,10 +94,30 @@ model social_accounts {
   @@index([brand_id])
 }
 
+model whatsapp_accounts {
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id           String    @unique @db.Uuid
+  phone_e164        String?
+  display_name      String?
+  jid               String?
+  session_enc       Bytes?
+  status            String    @default("DISCONNECTED")
+  last_qr_at        DateTime? @db.Timestamptz
+  last_connected_at DateTime? @db.Timestamptz
+  last_send_at      DateTime? @db.Timestamptz
+  created_at        DateTime  @default(now()) @db.Timestamptz
+  updated_at        DateTime  @default(now()) @updatedAt @db.Timestamptz
+
+  user profiles @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([user_id])
+  @@index([status])
+}
+
 enum SocialPlatform {
   INSTAGRAM
   TIKTOK
-  TWITTER          // X
+  TWITTER // X
   LINKEDIN
   FACEBOOK
   YOUTUBE
@@ -112,21 +133,21 @@ enum SocialPlatform {
 // ─── Campaigns (autopilot schedules per brand) ───
 
 model campaigns {
-  id              String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  brand_id        String      @db.Uuid
+  id              String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  brand_id        String           @db.Uuid
   name            String
   content_type    ContentType
   cron_expression String?
-  next_run_at     DateTime?   @db.Timestamptz
-  topic_pool      String[]    @default([])
+  next_run_at     DateTime?        @db.Timestamptz
+  topic_pool      String[]         @default([])
   platforms       SocialPlatform[] @default([])
-  autopilot       Boolean     @default(false)
+  autopilot       Boolean          @default(false)
   // Founder-Pass-gated. When true, finished jobs skip REVIEW and go straight
   // to POSTING. Enforced at submit time against profiles.plan.
-  auto_publish    Boolean     @default(false)
-  active          Boolean     @default(true)
-  created_at      DateTime    @default(now()) @db.Timestamptz
-  updated_at      DateTime    @default(now()) @updatedAt @db.Timestamptz
+  auto_publish    Boolean          @default(false)
+  active          Boolean          @default(true)
+  created_at      DateTime         @default(now()) @db.Timestamptz
+  updated_at      DateTime         @default(now()) @updatedAt @db.Timestamptz
 
   brand brands @relation(fields: [brand_id], references: [id], onDelete: Cascade)
 
@@ -169,9 +190,9 @@ model content_jobs {
   created_at     DateTime         @default(now()) @db.Timestamptz
   completed_at   DateTime?        @db.Timestamptz
 
-  brand brands                  @relation(fields: [brand_id], references: [id], onDelete: Cascade)
-  events progress_events[]
-  artifacts content_job_artifacts[]
+  brand        brands                  @relation(fields: [brand_id], references: [id], onDelete: Cascade)
+  events       progress_events[]
+  artifacts    content_job_artifacts[]
   usage_events agent_usage_events[]
 
   @@index([user_id, created_at(sort: Desc)])

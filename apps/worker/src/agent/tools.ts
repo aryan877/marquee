@@ -63,12 +63,15 @@ export const makeContentAgentRuntime = (state: ContentAgentState) =>
         const id = String(data);
         const artifact = { id, ...args } satisfies ArtifactRecord;
         state.artifacts.push(artifact);
+        const thumbnailUrl = typeof artifact.metadata.thumbnail_url === 'string'
+          ? artifact.metadata.thumbnail_url
+          : artifact.kind === 'video' ? null : artifact.url;
         yield* state.emit(ProgressStep.ArtifactCreate, `${artifact.kind} ${artifact.role} created`, null, {
           artifact_id: artifact.id,
           kind: artifact.kind,
           role: artifact.role,
           url: artifact.url,
-          thumbnail_url: artifact.kind === 'video' ? null : artifact.url,
+          thumbnail_url: thumbnailUrl,
           mime_type: artifact.mimeType,
           width: artifact.width,
           height: artifact.height,
@@ -345,9 +348,11 @@ export const makeContentAgentRuntime = (state: ContentAgentState) =>
           }
           if (artifact.kind === 'video') {
             if (!artifact.key) return yield* Effect.fail(new Error('video artifact has no local key'));
+            const videoPath = join(cfg.outputsDir, artifact.key);
+            const duration = yield* ff.probeDurationSeconds(videoPath);
             const frameKey = `${state.ctx.job.id}/agent/review-frame-${artifact.iteration}.jpg`;
             const framePath = join(cfg.outputsDir, frameKey);
-            yield* ff.extractFrame({ videoPath: join(cfg.outputsDir, artifact.key), outPath: framePath, atSeconds: Math.max(1, (artifact.durationS ?? 6) / 2) });
+            yield* ff.extractFrame({ videoPath, outPath: framePath, atSeconds: Math.max(1, duration / 2) });
             const frameSaved = yield* storage.saveFile(frameKey, framePath, 'image/jpeg');
             yield* createArtifact({
               kind: 'frame',
@@ -366,8 +371,9 @@ export const makeContentAgentRuntime = (state: ContentAgentState) =>
               artifactId: artifact.id,
               filePath: framePath,
               mimeType: 'image/jpeg',
-              prompt: input.prompt ?? `Review this sampled video frame for ${state.ctx.brand.name}. Check if the final video should pass social review.`,
+              prompt: input.prompt ?? `This is one sampled frame from a ${duration.toFixed(1)}s vertical video for ${state.ctx.brand.name}. Review only visual readability and composition in this frame. Do not claim to have checked motion, audio, or the full timeline.`,
               iteration: input.iteration ?? artifact.iteration,
+              reviewScope: 'sampled_video_frame',
             });
           }
             return yield* Effect.fail(new Error('unsupported artifact kind'));

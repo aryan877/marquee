@@ -15,6 +15,19 @@ export function mintJobToken(args: { userId: string; jobId: string; ttlSeconds?:
   );
 }
 
+export function mintWorkerActionToken(args: { userId: string; scope: 'whatsapp'; ttlSeconds?: number }): string {
+  return jwt.sign(
+    { sub: args.userId, scope: args.scope },
+    secret(),
+    { expiresIn: args.ttlSeconds ?? 120 },
+  );
+}
+
+export function workerHttpUrl(path: string): string {
+  const base = process.env.WORKER_HTTP_URL ?? 'http://localhost:4001';
+  return `${base.replace(/\/$/, '')}${path.startsWith('/') ? path : `/${path}`}`;
+}
+
 export function workerWsUrl(jobId: string, token: string): string {
   const base = process.env.NEXT_PUBLIC_WORKER_WS_URL ?? 'ws://localhost:4001';
   return `${base}/ws/jobs/${encodeURIComponent(jobId)}?token=${encodeURIComponent(token)}`;

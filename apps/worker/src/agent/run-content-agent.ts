@@ -40,7 +40,7 @@ export const runContentAgent = (ctx: PipelineContext) =>
       Effect.repeat(Schedule.spaced(Duration.seconds(60))),
     );
 
-    yield* Effect.scoped(
+    const workflowResult = yield* Effect.either(Effect.scoped(
       Effect.gen(function* () {
         yield* Effect.forkScoped(lease.pipe(Effect.catchAll(() => Effect.void)));
         yield* Effect.forkScoped(heartbeat.pipe(Effect.catchAll(() => Effect.void)));
@@ -48,7 +48,16 @@ export const runContentAgent = (ctx: PipelineContext) =>
           Effect.timeoutFail({ duration: Duration.seconds(cfg.agentMaxJobSeconds), onTimeout: () => new Error('Agent job timed out') }),
         );
       }),
-    );
+    ));
+
+    if (Either.isLeft(workflowResult) && !state.finalized) {
+      const recovered = yield* sendBestArtifactToReview(state, rpc, workflowResult.left).pipe(
+        Effect.catchAll(() => Effect.succeed(false)),
+      );
+      if (!recovered) {
+        return yield* Effect.fail(workflowResult.left);
+      }
+    }
 
     if (!state.finalized) {
       return yield* Effect.fail(new Error('Agent did not finalize an artifact'));
@@ -144,6 +153,58 @@ const extendLease = (rpc: Rpc, msgId: number, vtSeconds: number) =>
     p_msg_id: msgId,
     p_visibility_timeout_seconds: vtSeconds,
   })).pipe(Effect.ignore);
+
+const sendBestArtifactToReview = (state: ContentAgentState, rpc: Rpc, cause: unknown) =>
+  Effect.gen(function* () {
+    const error = cause instanceof Error ? cause : new Error(String(cause));
+    const artifact = [...state.artifacts].reverse().find((item) =>
+      item.url && (item.role === 'draft' || item.role === 'intermediate') && (item.kind === 'poster' || item.kind === 'video' || item.kind === 'image'),
+    );
+    if (!artifact?.url) return false;
+
+    const outputKey = artifact.key ?? `${state.ctx.job.id}/agent/manual-review`;
+    const thumbnailUrl = artifact.kind === 'video'
+      ? typeof artifact.metadata.thumbnail_url === 'string' ? artifact.metadata.thumbnail_url : artifact.url
+      : artifact.url;
+    yield* callRpc(rpc, 'set_job_output', {
+      p_job_id: state.ctx.job.id,
+      p_output_url: artifact.url,
+      p_output_key: outputKey,
+      p_thumbnail_url: thumbnailUrl,
+    });
+
+    const caption = typeof artifact.metadata.caption === 'string' ? artifact.metadata.caption.trim() : '';
+    if (caption) {
+      const hashtags = Array.isArray(artifact.metadata.hashtags) ? artifact.metadata.hashtags.map(String).slice(0, 8) : [];
+      yield* callRpc(rpc, 'set_job_caption', {
+        p_job_id: state.ctx.job.id,
+        p_caption: caption.slice(0, 800),
+        p_hashtags: hashtags,
+      });
+    }
+
+    yield* callRpc(rpc, 'update_content_job_status', { p_job_id: state.ctx.job.id, p_status: 'REVIEW' });
+    state.finalized = true;
+    yield* state.emit(ProgressStep.AgentFinal, 'Artifact ready for manual review', 0.96, {
+      artifact_id: artifact.id,
+      url: artifact.url,
+      manual_review: true,
+      recovered_from_error: error.message,
+    }) as Effect.Effect<void, never, never>;
+    yield* state.emit(ProgressStep.Review, 'Ready for manual review', 0.98, {
+      manual_review: true,
+      reason: 'video QA was inconclusive; usable artifact exists',
+    }) as Effect.Effect<void, never, never>;
+    yield* state.emit(ProgressStep.Complete, 'Done', 1, { manual_review: true }) as Effect.Effect<void, never, never>;
+    return true;
+  });
+
+const callRpc = (rpc: Rpc, fn: string, args: Record<string, unknown>) =>
+  Effect.tryPromise(() => rpc(fn, args)).pipe(
+    Effect.flatMap(({ data, error }) => error
+      ? Effect.fail(error instanceof Error ? error : new Error(String(error)))
+      : Effect.succeed(data)),
+  );
 
 const AgentActionSchema = z.discriminatedUnion('action', [
   z.object({

@@ -3,6 +3,7 @@ import { resolve } from 'node:path';
 
 const nextConfig: NextConfig = {
   typedRoutes: true,
+  devIndicators: false,
   turbopack: {
     root: resolve(__dirname, '..', '..'),
   },

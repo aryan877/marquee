@@ -27,8 +27,6 @@ export default async function VideoCardRender({
 
   const line  = sp.line ?? 'When the wifi goes out at the worst possible moment.';
   const color = sp.color ?? palette.accent;
-  const index = Number(sp.index ?? '1');
-  const total = Number(sp.total ?? '5');
   const image = sp.image?.startsWith('http') ? sp.image : null;
   if (!image) throw new Error('image query param required');
 
@@ -40,14 +38,6 @@ export default async function VideoCardRender({
           background: `linear-gradient(160deg, ${color} 0%, ${palette.primary} 120%)`,
         }}
       />
-      <header className="head">
-        <div className="dot" style={{ background: palette.bg }} />
-        <span style={{ fontFamily: fonts.heading, color: palette.bg }}>
-          {brand.name.toLowerCase()}.
-        </span>
-        <span className="counter">step {index} / {total}</span>
-      </header>
-
       <section className="cat-wrap">
         <div className="cat-card" style={{ background: palette.bg, color: palette.fg }}>
           <img className="cat-image" src={image} alt="" />
@@ -72,19 +62,8 @@ export default async function VideoCardRender({
           font-family: ${fonts.body}, system-ui, sans-serif;
         }
         .bg { position: absolute; inset: 0; }
-        .head {
-          position: absolute; top: 64px; left: 64px; right: 64px;
-          display: flex; align-items: center; gap: 16px;
-          font-size: 28px; letter-spacing: -0.04em; font-weight: 700;
-        }
-        .head .dot { width: 12px; height: 12px; border-radius: 999px; }
-        .head .counter {
-          margin-left: auto; font-family: 'Geist Mono', ui-monospace, monospace;
-          font-size: 18px; opacity: 0.75; color: ${palette.bg};
-          letter-spacing: 0.1em; text-transform: uppercase;
-        }
         .cat-wrap {
-          position: absolute; top: 240px; left: 0; right: 0;
+          position: absolute; top: 150px; left: 0; right: 0;
           display: flex; justify-content: center;
         }
         .cat-card {

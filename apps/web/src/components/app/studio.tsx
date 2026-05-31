@@ -1,12 +1,13 @@
 'use client';
-import { useMemo, useState, useTransition } from 'react';
+import { useEffect, useMemo, useRef, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Check, ExternalLink, Loader2, Send, X } from 'lucide-react';
 import { LIVE_SOCIAL_PLATFORMS, type LiveSocialPlatform, type SocialPlatformZ } from '@marquee/shared/schemas';
 import { ProgressStep, type PlatformPostResult, type PostDonePayload, type PostStartPayload } from '@marquee/shared/progress';
 import type { Database } from '@marquee/db';
-import { PLATFORM_META } from '@/components/marquee/platform-icons';
+import { PLATFORM_META, WHATSAPP_META } from '@/components/marquee/platform-icons';
+import { JobMediaFrame, JobMediaPreview, mediaFromArtifact, mediaFromUrl, type JobMedia } from '@/components/app/job-media';
 import { useJobStream, type ProgressFrame } from '@/lib/use-job-stream';
 import { cn } from '@/lib/cn';
 
@@ -40,6 +41,8 @@ export function Studio({
   const [postDialogOpen, setPostDialogOpen] = useState(false);
   const [postError, setPostError] = useState<string | null>(null);
   const [postResult, setPostResult] = useState<ApproveResponse | null>(null);
+  const [whatsappPendingUrl, setWhatsappPendingUrl] = useState<string | null>(null);
+  const [whatsappStatus, setWhatsappStatus] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
   const [localEvents, setLocalEvents] = useState<ProgressFrame[]>([]);
   const [selectedPlatforms, setSelectedPlatforms] = useState<LiveSocialPlatform[]>(
     () => pickDefaultPlatforms(job.platforms, connectedAccounts),
@@ -66,15 +69,13 @@ export function Studio({
   const lastPoster = posterLayers[posterLayers.length - 1] ?? null;
   const finalArtifact = artifacts.findLast((e) => payloadString(e, 'role') === 'final') ?? null;
   const draftArtifact = artifacts.findLast((e) => payloadString(e, 'role') === 'draft') ?? null;
-  const previewUrl = payloadString(finalArtifact, 'thumbnail_url')
-    ?? payloadString(finalArtifact, 'url')
-    ?? payloadString(draftArtifact, 'thumbnail_url')
-    ?? payloadString(draftArtifact, 'url')
-    ?? payloadString(lastPoster, 'preview_url')
-    ?? payloadString(lastFrame, 'thumbnail_url')
-    ?? job.thumbnail_url
-    ?? job.output_url
-    ?? null;
+  const previewMedia =
+    mediaFromArtifact(finalArtifact)
+    ?? mediaFromArtifact(draftArtifact)
+    ?? mediaFromUrl(payloadString(lastPoster, 'preview_url'), 'image')
+    ?? mediaFromUrl(payloadString(lastFrame, 'thumbnail_url'), 'image')
+    ?? mediaFromUrl(job.thumbnail_url, 'image')
+    ?? mediaFromUrl(job.output_url);
 
   const connectedByPlatform = useMemo(() => {
     const map = new Map<LiveSocialPlatform, ConnectedSocialAccount>();
@@ -145,6 +146,30 @@ export function Studio({
     });
   }
 
+  async function sendToWhatsapp(media: JobMedia | null, label = 'artifact') {
+    if (!media) return;
+    setWhatsappPendingUrl(media.url);
+    setWhatsappStatus(null);
+    try {
+      const res = await fetch('/api/whatsapp/send', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          job_id: job.id,
+          media_url: media.url,
+          caption: job.caption ?? job.topic ?? '',
+        }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(typeof body.error === 'string' ? body.error : 'WhatsApp send failed');
+      setWhatsappStatus({ kind: 'ok', text: `Sent ${label} to WhatsApp` });
+    } catch (err) {
+      setWhatsappStatus({ kind: 'err', text: err instanceof Error ? err.message : 'WhatsApp send failed' });
+    } finally {
+      setWhatsappPendingUrl(null);
+    }
+  }
+
   return (
     <div className="grid h-[calc(100dvh-var(--app-banner-height,0px))] min-h-0 grid-cols-1 overflow-hidden lg:grid-cols-[minmax(0,1fr)_390px]">
       <section className="flex min-h-0 min-w-0 flex-col overflow-hidden">
@@ -189,13 +214,11 @@ export function Studio({
         <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-6 md:p-10">
           <div className="grid gap-6 xl:grid-cols-[minmax(320px,0.85fr)_minmax(360px,1fr)]">
             <Panel title="Preview" subtitle="Selected artifact" className="xl:row-span-2">
-              <div className="relative aspect-[4/5] overflow-hidden rounded-[var(--radius-md)] bg-[var(--color-paper-3)]">
-                {previewUrl ? (
-                  <img src={previewUrl} alt="Generated preview" className="absolute inset-0 h-full w-full object-cover" />
-                ) : (
-                  <div className="grid h-full place-items-center text-sm text-[var(--color-ink-3)]">Awaiting first frame...</div>
-                )}
-              </div>
+              <JobMediaFrame
+                media={previewMedia}
+                alt="Generated preview"
+                empty={<div className="grid h-full place-items-center text-sm text-[var(--color-ink-3)]">Awaiting first frame...</div>}
+              />
             </Panel>
 
             <Panel title="Agent" subtitle={`${agentEvents.length} events`}>
@@ -206,9 +229,25 @@ export function Studio({
               <Panel title="Artifacts" subtitle={`${artifacts.length} created`}>
                 <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
                   {artifacts.slice(-6).map((artifact) => (
-                    <ArtifactTile key={artifact.ts} event={artifact} />
+                    <ArtifactTile
+                      key={artifact.ts}
+                      event={artifact}
+                      sending={whatsappPendingUrl === payloadString(artifact, 'url')}
+                      onSend={(media) => void sendToWhatsapp(media, payloadString(artifact, 'role') ?? 'artifact')}
+                    />
                   ))}
                 </div>
+              </Panel>
+            )}
+
+            {(previewMedia || artifacts.length > 0) && (
+              <Panel title="WhatsApp" subtitle="phone review">
+                <WhatsAppShareBox
+                  media={previewMedia}
+                  pending={whatsappPendingUrl === previewMedia?.url}
+                  status={whatsappStatus}
+                  onSend={() => void sendToWhatsapp(previewMedia, 'selected artifact')}
+                />
               </Panel>
             )}
 
@@ -217,15 +256,29 @@ export function Studio({
                 <ul className="space-y-2 text-sm">
                   {visionReviews.slice(-5).map((review) => {
                     const issues = payloadArray(review, 'issues');
-                    const score = payloadNumber(review, 'score');
+                    const suggestedEdits = payloadArray(review, 'suggested_edits');
+                    const riskFlags = payloadArray(review, 'risk_flags');
+                    const score = payloadMaybeNumber(review, 'score');
                     const passed = review.payload?.pass === true;
+                    const sampledFrame = review.payload?.review_scope === 'sampled_video_frame';
+                    const label = passed ? 'Passed'
+                      : score == null && issues.length === 0 && suggestedEdits.length === 0
+                        ? 'Review inconclusive'
+                        : 'Needs revision';
                     return (
-                      <li key={review.ts} className="rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2">
+                      <li key={review.ts} className="rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-3">
                         <div className="flex items-center justify-between gap-3">
-                          <span className="font-medium">{passed ? 'Pass' : 'Revision suggested'}</span>
-                          <span className="font-mono text-[10px] text-[var(--color-ink-3)]">{Math.round(score * 100)}%</span>
+                          <span className="font-medium">{label}</span>
+                          <span className="font-mono text-[10px] text-[var(--color-ink-3)]">
+                            {score == null ? 'no score' : `${Math.round(score * 100)}%`}
+                          </span>
                         </div>
-                        {issues.length > 0 && <div className="mt-1 text-xs text-[var(--color-ink-3)]">{issues.join(' / ')}</div>}
+                        <div className="mt-1 text-xs text-[var(--color-ink-3)]">
+                          {sampledFrame ? 'Sampled-frame visual QA, not full-video judgment.' : 'Static visual QA.'}
+                        </div>
+                        {issues.length > 0 && <div className="mt-2 text-xs text-[var(--color-ink-2)]">{issues.join(' / ')}</div>}
+                        {suggestedEdits.length > 0 && <div className="mt-1 text-xs text-[var(--color-ink-3)]">Next: {suggestedEdits.join(' / ')}</div>}
+                        {riskFlags.length > 0 && <div className="mt-1 font-mono text-[10px] tracking-wider text-[var(--color-ink-3)]">{riskFlags.join(' · ')}</div>}
                       </li>
                     );
                   })}
@@ -271,20 +324,34 @@ export function Studio({
             {showCats && (
               <Panel title="Cat clips" subtitle={`${assets.length} picked`}>
                 <div className="grid grid-cols-3 gap-2">
-                  {assets.map((asset) => (
-                    <motion.div
-                      key={asset.ts}
-                      initial={{ opacity: 0, scale: 0.96 }}
-                      animate={{ opacity: 1, scale: 1 }}
-                      className="aspect-square overflow-hidden rounded-[var(--radius-sm)] bg-[var(--color-paper-3)] ring-1 ring-[var(--color-border)]"
-                    >
-                      {payloadString(asset, 'thumbnail_url') ? (
-                        <img src={payloadString(asset, 'thumbnail_url')} alt={payloadString(asset, 'emotion') ?? 'clip'} className="h-full w-full object-cover" />
-                      ) : (
-                        <div className="grid h-full place-items-center text-xs text-[var(--color-ink-3)]">{payloadString(asset, 'emotion') ?? 'clip'}</div>
-                      )}
-                    </motion.div>
-                  ))}
+                  {assets.map((asset) => {
+                    const media = mediaFromUrl(payloadString(asset, 'url') ?? payloadString(asset, 'thumbnail_url'), 'image');
+                    return (
+                      <motion.div
+                        key={asset.ts}
+                        initial={{ opacity: 0, scale: 0.96 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        className="overflow-hidden rounded-[var(--radius-sm)] bg-[var(--color-paper-3)] ring-1 ring-[var(--color-border)]"
+                      >
+                        <div className="aspect-square">
+                          {payloadString(asset, 'thumbnail_url') ? (
+                            <img src={payloadString(asset, 'thumbnail_url')} alt={payloadString(asset, 'emotion') ?? 'clip'} className="h-full w-full object-cover" />
+                          ) : (
+                            <div className="grid h-full place-items-center text-xs text-[var(--color-ink-3)]">{payloadString(asset, 'emotion') ?? 'clip'}</div>
+                          )}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => media && void sendToWhatsapp(media, payloadString(asset, 'emotion') ?? 'clip')}
+                          disabled={!media || whatsappPendingUrl === media.url}
+                          className="flex w-full items-center justify-center gap-1.5 border-t border-[var(--color-border)] bg-[var(--color-surface)] px-2 py-1.5 text-[10px] text-[var(--color-ink-2)] transition-colors hover:bg-[var(--color-paper-2)] hover:text-[var(--color-ink)] disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          {whatsappPendingUrl === media?.url ? <Loader2 className="h-3 w-3 animate-spin" /> : <WHATSAPP_META.Icon className="h-3 w-3" />}
+                          send
+                        </button>
+                      </motion.div>
+                    );
+                  })}
                 </div>
               </Panel>
             )}
@@ -332,7 +399,7 @@ export function Studio({
         open={postDialogOpen}
         posting={posting}
         job={job}
-        previewUrl={previewUrl}
+        previewMedia={previewMedia}
         selectedPlatforms={selectedPlatforms}
         connectedByPlatform={connectedByPlatform}
         postError={postError}
@@ -357,7 +424,7 @@ function PostDialog({
   open,
   posting,
   job,
-  previewUrl,
+  previewMedia,
   selectedPlatforms,
   connectedByPlatform,
   postError,
@@ -370,7 +437,7 @@ function PostDialog({
   open: boolean;
   posting: boolean;
   job: Job;
-  previewUrl: string | null;
+  previewMedia: JobMedia | null;
   selectedPlatforms: LiveSocialPlatform[];
   connectedByPlatform: Map<LiveSocialPlatform, ConnectedSocialAccount>;
   postError: string | null;
@@ -399,13 +466,12 @@ function PostDialog({
             transition={{ duration: 0.2 }}
           >
             <div className="border-b border-[var(--color-border)] bg-[var(--color-paper-2)] p-5 md:border-b-0 md:border-r">
-              <div className="relative aspect-[4/5] overflow-hidden rounded-[var(--radius-md)] bg-[var(--color-paper-3)]">
-                {previewUrl ? (
-                  <img src={previewUrl} alt="Post preview" className="absolute inset-0 h-full w-full object-cover" />
-                ) : (
-                  <div className="grid h-full place-items-center text-sm text-[var(--color-ink-3)]">No preview yet</div>
-                )}
-              </div>
+              <JobMediaFrame
+                media={previewMedia}
+                alt="Post preview"
+                className="max-h-[70dvh]"
+                empty={<div className="grid h-full place-items-center text-sm text-[var(--color-ink-3)]">No preview yet</div>}
+              />
             </div>
 
             <div className="flex min-h-0 flex-col">
@@ -558,61 +624,154 @@ function EventList({ events, empty }: { events: ProgressFrame[]; empty: string }
   );
 }
 
-function ArtifactTile({ event }: { event: ProgressFrame }) {
-  const href = payloadString(event, 'url') ?? '#';
-  const thumb = payloadString(event, 'thumbnail_url');
+function WhatsAppShareBox({
+  media,
+  pending,
+  status,
+  onSend,
+}: {
+  media: JobMedia | null;
+  pending: boolean;
+  status: { kind: 'ok' | 'err'; text: string } | null;
+  onSend: () => void;
+}) {
+  const Icon = WHATSAPP_META.Icon;
   return (
-    <a
-      href={href}
-      target="_blank"
-      rel="noreferrer"
-      className="overflow-hidden rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-[var(--color-surface)]"
-    >
-      <div className="aspect-square bg-[var(--color-paper-3)]">
-        {thumb ? (
-          <img src={thumb} alt={payloadString(event, 'kind') ?? 'artifact'} className="h-full w-full object-cover" />
+    <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
+      <div className="flex items-start gap-3">
+        <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full border border-[var(--color-border)] bg-[var(--color-paper)]">
+          <Icon className={cn('h-5 w-5', WHATSAPP_META.tint)} />
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="font-medium">Send to yourself</div>
+          <div className="mt-1 text-xs text-[var(--color-ink-3)]">
+            Opens on your phone for review, forwarding, or approval outside the social-post flow.
+          </div>
+        </div>
+      </div>
+      <div className="mt-4 flex flex-wrap items-center gap-3">
+        <button
+          type="button"
+          onClick={onSend}
+          disabled={!media || pending}
+          className="inline-flex items-center gap-2 rounded-full bg-[var(--color-ink)] px-4 py-2 text-sm text-[var(--color-paper)] transition-colors hover:bg-[var(--color-ink-2)] disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Icon className="h-4 w-4" />}
+          {pending ? 'Sending' : 'Send current'}
+        </button>
+        <a href="/app/settings/social" className="text-xs text-[var(--color-ink-3)] underline underline-offset-4 hover:text-[var(--color-ink)]">
+          Pair WhatsApp
+        </a>
+      </div>
+      {status && (
+        <div
+          className={cn(
+            'mt-3 rounded-[var(--radius-sm)] px-3 py-2 text-sm',
+            status.kind === 'err'
+              ? 'border border-[var(--color-signal-bad)]/30 bg-[var(--color-signal-bad)]/10 text-[var(--color-signal-bad)]'
+              : 'border border-[var(--color-signal-good)]/30 bg-[var(--color-signal-good)]/10 text-[var(--color-ink)]',
+          )}
+        >
+          {status.text}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ArtifactTile({
+  event,
+  sending,
+  onSend,
+}: {
+  event: ProgressFrame;
+  sending: boolean;
+  onSend: (media: JobMedia) => void;
+}) {
+  const href = payloadString(event, 'url') ?? '#';
+  const media = mediaFromArtifact(event, 'tile');
+  const sendMedia = mediaFromArtifact(event);
+  const Icon = WHATSAPP_META.Icon;
+  return (
+    <div className="overflow-hidden rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-[var(--color-surface)]">
+      <a href={href} target="_blank" rel="noreferrer" className="relative block aspect-square overflow-hidden bg-[var(--color-paper-3)]">
+        {media ? (
+          <JobMediaPreview media={media} alt={payloadString(event, 'kind') ?? 'artifact'} compact />
         ) : (
           <div className="grid h-full place-items-center px-2 text-center font-mono text-[10px] text-[var(--color-ink-3)]">
             {payloadString(event, 'mime_type') ?? 'artifact'}
           </div>
         )}
-      </div>
+      </a>
       <div className="flex items-center justify-between px-2 py-1.5 text-[10px]">
         <span className="font-mono text-[var(--color-ink-3)]">{payloadString(event, 'kind') ?? 'file'}</span>
         <span className="rounded-full bg-[var(--color-paper-3)] px-1.5">{payloadString(event, 'role') ?? 'draft'}</span>
       </div>
-    </a>
+      <button
+        type="button"
+        onClick={() => sendMedia && onSend(sendMedia)}
+        disabled={!sendMedia || sending}
+        className="flex w-full items-center justify-center gap-1.5 border-t border-[var(--color-border)] px-2 py-1.5 text-[10px] text-[var(--color-ink-2)] transition-colors hover:bg-[var(--color-paper-2)] hover:text-[var(--color-ink)] disabled:cursor-not-allowed disabled:opacity-50"
+      >
+        {sending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Icon className="h-3 w-3" />}
+        {sending ? 'sending' : 'send'}
+      </button>
+    </div>
   );
 }
 
 function Timeline({ events }: { events: ProgressFrame[] }) {
-  const list = events.slice().reverse();
+  const listRef = useRef<HTMLOListElement | null>(null);
+  const list = events;
+
+  useEffect(() => {
+    const el = listRef.current;
+    if (!el) return;
+    el.scrollTop = el.scrollHeight;
+  }, [events.length]);
+
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <header className="shrink-0 border-b border-[var(--color-border)] px-5 py-4">
-        <h3 className="font-medium">Timeline</h3>
-        <p className="mt-1 text-xs text-[var(--color-ink-3)]">Live event stream</p>
+        <div className="flex items-center justify-between gap-3">
+          <h3 className="font-medium">Timeline</h3>
+          <span className="font-mono text-[10px] tracking-wider text-[var(--color-ink-3)]">{events.length} events</span>
+        </div>
+        <p className="mt-1 text-xs text-[var(--color-ink-3)]">Oldest at top · latest at bottom</p>
       </header>
-      <ol className="min-h-0 flex-1 space-y-px overflow-y-auto overscroll-contain">
+      <ol ref={listRef} className="min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain p-3">
         <AnimatePresence initial={false}>
-          {list.map((event) => (
+          {list.map((event, index) => (
             <motion.li
               key={`${event.ts}-${event.step}`}
               layout
-              initial={{ opacity: 0, x: 8 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ duration: 0.2 }}
-              className="border-b border-[var(--color-border)]/60 px-5 py-3"
+              initial={{ opacity: 0, y: 14, scale: 0.985 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              transition={{ type: 'spring', stiffness: 420, damping: 34, mass: 0.8 }}
+              className={cn(
+                'rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-3 shadow-[0_1px_0_oklch(100%_0_0_/_0.4)]',
+                index === list.length - 1 && 'border-[var(--color-ink)] bg-[var(--color-paper-glow)]',
+              )}
             >
               <div className="flex items-center gap-2">
                 <span className={cn('inline-block h-1.5 w-1.5 rounded-full', dotColor(event.step))} />
                 <span className="font-mono text-[10px] tracking-wider text-[var(--color-ink-3)]">{event.step}</span>
+                {index === list.length - 1 && (
+                  <span className="rounded-full bg-[var(--color-paper-3)] px-2 py-0.5 font-mono text-[9px] tracking-wider text-[var(--color-ink-2)]">
+                    latest
+                  </span>
+                )}
                 <span className="ml-auto font-mono text-[10px] text-[var(--color-ink-3)]">{fmtTime(event.ts)}</span>
               </div>
               <div className="mt-1 text-sm text-[var(--color-ink)]">{event.message}</div>
               {event.progress != null && (
                 <div className="mt-2 h-1 overflow-hidden rounded-full bg-[var(--color-paper-3)]">
-                  <div className="h-full bg-[var(--color-ink)]" style={{ width: `${Math.min(100, Math.max(0, event.progress * 100))}%` }} />
+                  <motion.div
+                    className="h-full bg-[var(--color-ink)]"
+                    initial={{ width: 0 }}
+                    animate={{ width: `${Math.min(100, Math.max(0, event.progress * 100))}%` }}
+                    transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
+                  />
                 </div>
               )}
             </motion.li>
@@ -697,6 +856,11 @@ function payloadString(event: ProgressFrame | null, key: string) {
 function payloadNumber(event: ProgressFrame | null, key: string) {
   const value = event?.payload?.[key];
   return typeof value === 'number' && Number.isFinite(value) ? value : 0;
+}
+
+function payloadMaybeNumber(event: ProgressFrame | null, key: string) {
+  const value = event?.payload?.[key];
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
 }
 
 function payloadArray(event: ProgressFrame | null, key: string) {

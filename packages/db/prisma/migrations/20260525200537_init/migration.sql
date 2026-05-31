@@ -1,6 +1,3 @@
-[dotenv@17.2.3] injecting env (18) from ../../.env -- tip: 📡 add observability to secrets: https://dotenvx.com/ops
-Loaded Prisma config from prisma.config.ts.
-
 -- CreateSchema
 CREATE SCHEMA IF NOT EXISTS "public";
 
@@ -192,4 +189,3 @@ ALTER TABLE "content_jobs" ADD CONSTRAINT "content_jobs_brand_id_fkey" FOREIGN K
 
 -- AddForeignKey
 ALTER TABLE "progress_events" ADD CONSTRAINT "progress_events_job_id_fkey" FOREIGN KEY ("job_id") REFERENCES "content_jobs"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-

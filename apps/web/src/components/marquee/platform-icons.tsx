@@ -2,7 +2,7 @@ import type { ComponentType, SVGProps } from 'react';
 import {
   siX, siInstagram, siFacebook, siTiktok, siYoutube,
   siBluesky, siThreads, siPinterest, siGoogle,
-  siMastodon, siDiscord, siTelegram,
+  siMastodon, siDiscord, siTelegram, siWhatsapp,
 } from 'simple-icons';
 import { LIVE_SOCIAL_PLATFORMS, type SocialPlatformZ } from '@marquee/shared/schemas';
 
@@ -65,3 +65,9 @@ export const PLATFORM_META: Record<SocialPlatformZ, {
 
 export const isLiveSocialPlatform = (platform: SocialPlatformZ) =>
   LIVE_SOCIAL_PLATFORMS.includes(platform as (typeof LIVE_SOCIAL_PLATFORMS)[number]);
+
+export const WHATSAPP_META = {
+  label: 'WhatsApp',
+  Icon: fromSimple(siWhatsapp as IconSpec),
+  tint: `text-[#${siWhatsapp.hex}]`,
+};

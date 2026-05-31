@@ -78,6 +78,7 @@ export function useJobStream({ wsUrl, initialEvents = [], pingMs = 20_000, retry
     function connect() {
       dispatch({ type: 'status', status: 'connecting' });
       const ws = new WebSocket(wsUrl!);
+      ws.binaryType = 'arraybuffer';
       wsRef.current = ws;
 
       ws.onopen = () => {
@@ -89,11 +90,9 @@ export function useJobStream({ wsUrl, initialEvents = [], pingMs = 20_000, retry
         }, pingMs);
       };
 
-      ws.onmessage = (ev) => {
+      ws.onmessage = async (ev) => {
         try {
-          const frame = JSON.parse(typeof ev.data === 'string' ? ev.data : new TextDecoder().decode(ev.data)) as ProgressFrame & {
-            type?: string;
-          };
+          const frame = JSON.parse(await readMessageData(ev.data)) as ProgressFrame & { type?: string };
           if (frame?.type === 'hello' || frame?.type === 'pong') return;
           if (typeof frame?.step !== 'string') return;
           dispatch({ type: 'event', frame });
@@ -138,4 +137,12 @@ export function useJobStream({ wsUrl, initialEvents = [], pingMs = 20_000, retry
     latestByGroup: state.latestByGroup,
     isOpen:        state.status === 'open',
   }), [state]);
+}
+
+async function readMessageData(data: MessageEvent['data']) {
+  if (typeof data === 'string') return data;
+  if (data instanceof ArrayBuffer) return new TextDecoder().decode(data);
+  if (data instanceof Blob) return data.text();
+  if (ArrayBuffer.isView(data)) return new TextDecoder().decode(data);
+  throw new Error('unsupported ws payload');
 }
