@@ -1028,6 +1028,13 @@ export type Database = {
         Args: { p_period_ends_at: string; p_subscription_id: string }
         Returns: undefined
       }
+      set_content_job_platforms: {
+        Args: {
+          p_job_id: string
+          p_platforms: Database["public"]["Enums"]["SocialPlatform"][]
+        }
+        Returns: undefined
+      }
       set_job_caption: {
         Args: { p_caption: string; p_hashtags: string[]; p_job_id: string }
         Returns: undefined

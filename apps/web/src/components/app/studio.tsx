@@ -815,8 +815,9 @@ function ConnectionDot({ status }: { status: 'idle' | 'connecting' | 'open' | 'c
 
 function pickDefaultPlatforms(platforms: SocialPlatformZ[], accounts: ConnectedSocialAccount[]): LiveSocialPlatform[] {
   const connected = new Set(accounts.filter((a) => a.is_active && isLivePlatform(a.platform)).map((a) => a.platform as LiveSocialPlatform));
+  if (platforms.length === 0) return [];
   const requested = platforms.filter((p): p is LiveSocialPlatform => isLivePlatform(p) && connected.has(p));
-  return requested.length > 0 ? requested : Array.from(connected);
+  return requested;
 }
 
 function latestMap(events: ProgressFrame[]) {

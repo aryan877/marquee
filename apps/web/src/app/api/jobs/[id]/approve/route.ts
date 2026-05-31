@@ -131,6 +131,7 @@ export async function POST(
   }
 
   await admin.rpc('mark_content_job_approved', { p_job_id: id });
+  await admin.rpc('set_content_job_platforms', { p_job_id: id, p_platforms: targets });
   await admin.rpc('update_content_job_status', { p_job_id: id, p_status: 'POSTED' });
 
   await admin.rpc('emit_progress_event', {

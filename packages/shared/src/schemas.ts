@@ -84,6 +84,6 @@ export const SubmitJobSchema = z.object({
   brand_id:     z.string().uuid(),
   content_type: ContentTypeSchema,
   topic:        z.string().min(1).max(300).optional(),
-  platforms:    z.array(z.enum(LIVE_SOCIAL_PLATFORMS)).min(1).max(LIVE_SOCIAL_PLATFORMS.length),
+  platforms:    z.array(z.enum(LIVE_SOCIAL_PLATFORMS)).max(LIVE_SOCIAL_PLATFORMS.length).default([]),
   campaign_id:  z.string().uuid().optional(),
 });

@@ -15,7 +15,7 @@ export default async function GeneratePage() {
  <p className="font-mono text-xs tracking-[0.2em] text-[var(--color-ink-3)]">New post</p>
  <h1 className="mt-2 font-display text-5xl tracking-[-0.05em] md:text-6xl">Generate.</h1>
  <p className="mt-3 text-[var(--color-ink-2)]">
- Pick a brand, pick what you want made, pick where it goes. The agent runs in front of you.
+ Pick a brand and what you want made. Choose where it posts only after you review the result.
  </p>
  <GenerateForm initialBrandsPage={initialBrandsPage} />
  </div>

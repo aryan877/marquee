@@ -51,7 +51,7 @@ export function JobsHistoryList({
 }
 
 function JobRow({ job: j }: { job: Job }) {
-  const platforms = (j.platforms ?? []).join(', ') || 'no platforms';
+  const platforms = (j.platforms ?? []).join(', ');
   const createdAt = formatAppDateTime(j.created_at);
 
   return (
@@ -66,7 +66,7 @@ function JobRow({ job: j }: { job: Job }) {
             <span className="truncate font-medium">{j.topic ?? 'Untitled'}</span>
           </div>
           <div className="mt-1 truncate text-xs text-[var(--color-ink-3)]">
-            {j.brand_name ? `${j.brand_name} · ` : ''}{j.content_type} · {platforms} · <time dateTime={j.created_at}>{createdAt}</time>
+            {j.brand_name ? `${j.brand_name} · ` : ''}{j.content_type} · {platforms || 'targets chosen at review'} · <time dateTime={j.created_at}>{createdAt}</time>
           </div>
         </div>
         <span className="shrink-0 font-mono text-xs tracking-wider text-[var(--color-ink-3)]">{j.status}</span>
