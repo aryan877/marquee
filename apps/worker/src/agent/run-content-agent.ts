@@ -114,6 +114,7 @@ const runAgenticWorkflow = (ctx: PipelineContext, state: ContentAgentState) =>
       workflow: 'openrouter_chat_tools',
       agent: productionAgent.name,
       max_iterations: cfg.agentMaxIterations,
+      max_turns: cfg.agentMaxTurns,
     }) as Effect.Effect<void, never, never>;
     const runner = new Runner({
       modelProvider: provider,
@@ -123,7 +124,7 @@ const runAgenticWorkflow = (ctx: PipelineContext, state: ContentAgentState) =>
     });
     const result = yield* Effect.tryPromise({
       try: () => runner.run(productionAgent, input, {
-        maxTurns: Math.max(18, cfg.agentMaxIterations * 6),
+        maxTurns: cfg.agentMaxTurns,
       }),
       catch: (err) => new Error(`content agent failed: ${String(err)}`),
     });
