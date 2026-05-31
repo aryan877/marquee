@@ -1,4 +1,5 @@
 import type { PipelineContext } from '../pipelines/types.js';
+import type { JobWorkspace } from './workspace.js';
 
 type Emit = (
   step: string,
@@ -24,6 +25,7 @@ export interface ArtifactRecord {
 export interface ContentAgentState {
   ctx: PipelineContext;
   emit: Emit;
+  workspace: JobWorkspace;
   artifacts: ArtifactRecord[];
   toolCalls: number;
   finalized: boolean;

@@ -2,7 +2,9 @@ import { Effect } from 'effect';
 import { ProgressStep } from '@marquee/shared/progress';
 import { tool, type Tool } from '@openai/agents';
 import { z } from 'zod';
+import { execFile } from 'node:child_process';
 import { basename, join } from 'node:path';
+import { promisify } from 'node:util';
 import { AppConfig } from '../config.js';
 import { Renderer } from '../lib/playwright-renderer.js';
 import { Storage } from '../lib/storage.js';
@@ -13,17 +15,11 @@ import { FalImage } from '../lib/fal-image.js';
 import { Vision } from '../lib/vision.js';
 import { AgentBudget } from '../lib/agent-budget.js';
 import type { ArtifactRecord, ContentAgentState } from './types.js';
-import {
-  ensureJobWorkspace,
-  listWorkspaceFiles,
-  readWorkspaceFile,
-  runWorkspaceCommand,
-  stageCatAsset,
-  writeWorkspaceFile,
-} from './workspace.js';
+import { stageCatAsset } from './workspace.js';
 
 const MAX_TEXT = 180;
 const LAYERS = ['background', 'wordmark', 'headline', 'accent', 'final'] as const;
+const execFileAsync = promisify(execFile);
 
 type RpcResult = { data: unknown; error: unknown };
 type Rpc = (fn: string, args?: Record<string, unknown>) => Promise<RpcResult>;
@@ -44,7 +40,6 @@ export const makeContentAgentTools = (state: ContentAgentState) =>
     const vision = yield* Vision;
     const budget = yield* AgentBudget;
     const rpc = sb.client.rpc.bind(sb.client) as unknown as Rpc;
-    const workspace = () => ensureJobWorkspace(state.ctx, cfg.outputsDir);
     const fromPromise = <A>(tryer: () => Promise<A>) => Effect.tryPromise({ try: tryer, catch: toError });
 
     const createArtifact = (args: Omit<ArtifactRecord, 'id'>) =>
@@ -177,50 +172,64 @@ export const makeContentAgentTools = (state: ContentAgentState) =>
         }),
       );
 
-    const listWorkspace = (input: { path?: string | null }) =>
-      withToolProgress('list_workspace_files', 0, { path: input.path ?? '.' },
-        fromPromise(async () => listWorkspaceFiles(await workspace(), input.path ?? '.')),
-      );
-
-    const readWorkspace = (input: { path: string; max_bytes?: number | null }) =>
-      withToolProgress('read_workspace_file', 0, { path: input.path },
-        fromPromise(async () => ({
-          path: input.path,
-          content: await readWorkspaceFile(await workspace(), input.path, input.max_bytes ?? 16000),
-        })),
-      );
-
-    const writeWorkspace = (input: { path: string; content: string }) =>
-      withToolProgress('write_workspace_file', 0, { path: input.path },
-        fromPromise(async () => writeWorkspaceFile(await workspace(), input.path, input.content)),
-      );
-
-    const listCatAssets = () =>
-      withToolProgress('list_cat_assets', 0, {},
-        fromPromise(async () => {
-          const ws = await workspace();
-          return {
-            count: ws.assets.length,
-            assets: ws.assets.map((asset) => ({
-              id: asset.id,
-              title: asset.title,
-              file: asset.file,
-              page: asset.page,
-              bytes: asset.bytes,
-              local_path: `assets/cats/${asset.file}`,
-            })),
-          };
+    const workspaceShell = (input: { cmd: string }) =>
+      withToolProgress('workspace_shell', 0, { cmd: input.cmd.slice(0, 160) },
+        Effect.promise(async () => {
+          const cmd = input.cmd.trim();
+          if (!cmd) return { exit_code: 2, stdout: '', stderr: 'cmd is required' };
+          if (cmd.includes('\0')) return { exit_code: 2, stdout: '', stderr: 'cmd contains a null byte' };
+          const args = [
+            'run',
+            '--rm',
+            '--network',
+            'none',
+            '--cpus',
+            '1',
+            '--memory',
+            '768m',
+            '--pids-limit',
+            '256',
+            '--cap-drop',
+            'ALL',
+            '--security-opt',
+            'no-new-privileges',
+            '--read-only',
+            '--tmpfs',
+            '/tmp:rw,nosuid,nodev,size=128m',
+            '--tmpfs',
+            '/run:rw,nosuid,nodev,size=32m',
+            '-e',
+            'HOME=/workspace/shared',
+            '-v',
+            `${state.workspace.root}:/workspace/shared:rw`,
+            '-w',
+            '/workspace/shared',
+            cfg.agentSandboxImage,
+            'bash',
+            '-lc',
+            cmd,
+          ];
+          try {
+            const { stdout, stderr } = await execFileAsync('docker', args, {
+              timeout: 30_000,
+              maxBuffer: 384 * 1024,
+            });
+            return {
+              exit_code: 0,
+              stdout: truncateOutput(stdout),
+              stderr: truncateOutput(stderr),
+            };
+          } catch (err) {
+            const cause = err as { code?: number | string; signal?: string; stdout?: string; stderr?: string; killed?: boolean };
+            return {
+              exit_code: typeof cause.code === 'number' ? cause.code : null,
+              signal: cause.signal ?? null,
+              timed_out: cause.killed === true,
+              stdout: truncateOutput(cause.stdout ?? ''),
+              stderr: truncateOutput(cause.stderr ?? String(err)),
+            };
+          }
         }),
-      );
-
-    const stageCat = (input: { asset_id: string; target_name?: string | null }) =>
-      withToolProgress('stage_cat_asset', 0, { asset_id: input.asset_id },
-        fromPromise(async () => stageCatAsset(await workspace(), input.asset_id, cfg.workerHttpUrl, state.ctx.job.id, input.target_name)),
-      );
-
-    const runCommand = (input: { command: string; args?: string[] | null; timeout_ms?: number | null }) =>
-      withToolProgress('run_workspace_command', 0, { command: input.command, args: input.args ?? [] },
-        fromPromise(async () => runWorkspaceCommand(await workspace(), input.command, input.args ?? [], Math.min(input.timeout_ms ?? 8000, 15000))),
       );
 
     const renderVideoDraft = (input: {
@@ -252,12 +261,11 @@ export const makeContentAgentTools = (state: ContentAgentState) =>
           for (let i = 0; i < lines.length; i++) {
             const line = lines[i]!;
             const staged = yield* fromPromise(async () => {
-              const ws = await workspace();
-              return await stageCatAsset(ws, line.assetId!, cfg.workerHttpUrl, state.ctx.job.id);
+              return await stageCatAsset(state.workspace, line.assetId!, cfg.workerHttpUrl, state.ctx.job.id);
             });
             const stagedSaved = yield* storage.saveFile(
               `${state.ctx.job.id}/agent/assets/${basename(staged.path)}`,
-              join(cfg.outputsDir, state.ctx.job.id, 'workspace', staged.path),
+              join(state.workspace.root, staged.path),
               staged.asset.content_type,
             );
             const ttsBytes = yield* tts.speak(line.text);
@@ -423,56 +431,18 @@ export const makeContentAgentTools = (state: ContentAgentState) =>
 
     const run = <A>(effect: Effect.Effect<A, Error>) => Effect.runPromise(effect);
 
-    return [
+    const sharedTools = [
       tool({
-        name: 'list_workspace_files',
-        description: 'List files in the current job workspace. Use this before reading job briefs, staged assets, or generated notes.',
-        parameters: z.object({ path: z.string().max(240).nullable().optional() }),
-        execute: (input) => run(listWorkspace(input)).then(toModel),
-      }),
-      tool({
-        name: 'read_workspace_file',
-        description: 'Read a small text/json/md/html/css/svg file from the current job workspace.',
+        name: 'workspace_shell',
+        description: 'Run one bash command in an isolated Docker workspace mounted at /workspace/shared. Use it to inspect job files and write short notes before rendering.',
         parameters: z.object({
-          path: z.string().min(1).max(240),
-          max_bytes: z.number().int().min(1).max(32000).nullable().optional(),
+          cmd: z.string().min(1).max(8000),
         }),
-        execute: (input) => run(readWorkspace(input)).then(toModel),
+        execute: (input) => run(workspaceShell(input)).then(toModel),
       }),
-      tool({
-        name: 'write_workspace_file',
-        description: 'Write a small text/json/md/html/css/svg note or spec inside the current job workspace.',
-        parameters: z.object({
-          path: z.string().min(1).max(240),
-          content: z.string().max(12000),
-        }),
-        execute: (input) => run(writeWorkspace(input)).then(toModel),
-      }),
-      tool({
-        name: 'list_cat_assets',
-        description: 'List available cat meme assets in the workspace. Use asset ids in render_video_draft lines when a visual cat reaction is useful.',
-        parameters: z.object({}),
-        execute: () => run(listCatAssets()).then(toModel),
-      }),
-      tool({
-        name: 'stage_cat_asset',
-        description: 'Copy a cat asset into selected-cats/ and return a public URL for render tools.',
-        parameters: z.object({
-          asset_id: z.string().min(1).max(120),
-          target_name: z.string().max(120).nullable().optional(),
-        }),
-        execute: (input) => run(stageCat(input)).then(toModel),
-      }),
-      tool({
-        name: 'run_workspace_command',
-        description: 'Run a safe allowlisted command inside the job workspace. No shell expansion. Allowed commands: ls, find, file, wc, du, ffprobe.',
-        parameters: z.object({
-          command: z.enum(['ls', 'find', 'file', 'wc', 'du', 'ffprobe']),
-          args: z.array(z.string().max(160)).max(16).nullable().optional(),
-          timeout_ms: z.number().int().min(1000).max(15000).nullable().optional(),
-        }),
-        execute: (input) => run(runCommand(input)).then(toModel),
-      }),
+    ];
+
+    const posterTools = [
       tool({
         name: 'render_poster_draft',
         description: 'Render a poster draft. Use for POSTER and CAROUSEL jobs before review/finalize.',
@@ -485,9 +455,12 @@ export const makeContentAgentTools = (state: ContentAgentState) =>
         }),
         execute: (input) => run(renderPosterDraft(input)).then(toModel),
       }),
+    ];
+
+    const videoTools = [
       tool({
         name: 'render_video_draft',
-        description: 'Render a 20-30 second vertical cat-meme explainer draft for VIDEO and REEL jobs. Every line must include an asset_id from list_cat_assets.',
+        description: 'Render a 20-30 second vertical cat-meme explainer draft for VIDEO and REEL jobs. Every line must include an asset_id from /workspace/shared/assets/cats/metadata.json.',
         parameters: z.object({
           lines: z.array(z.object({
             text: z.string().min(1).max(110),
@@ -500,6 +473,11 @@ export const makeContentAgentTools = (state: ContentAgentState) =>
         }),
         execute: (input) => run(renderVideoDraft(input)).then(toModel),
       }),
+    ];
+
+    return [
+      ...sharedTools,
+      ...(state.ctx.job.content_type === 'VIDEO' || state.ctx.job.content_type === 'REEL' ? videoTools : posterTools),
       tool({
         name: 'review_artifact',
         description: 'Review a rendered poster, image, or sampled video frame with the same OpenRouter vision model.',
@@ -530,6 +508,9 @@ export const makeContentAgentTools = (state: ContentAgentState) =>
   });
 
 const toModel = (value: unknown) => safeJson(value);
+
+const truncateOutput = (value: string) =>
+  value.length > 12_000 ? `${value.slice(0, 12_000)}\n[truncated]` : value;
 
 const buildPosterRenderUrl = (
   base: string,

@@ -18,6 +18,7 @@ export class AppConfig extends Effect.Service<AppConfig>()('AppConfig', {
     const agentMaxIterations = yield* Config.integer('AGENT_MAX_ITERATIONS').pipe(Config.withDefault(3));
     const agentMaxToolCalls = yield* Config.integer('AGENT_MAX_TOOL_CALLS').pipe(Config.withDefault(32));
     const agentMaxJobSeconds = yield* Config.integer('AGENT_MAX_JOB_SECONDS').pipe(Config.withDefault(240));
+    const agentSandboxImage = yield* Config.string('AGENT_SANDBOX_IMAGE').pipe(Config.withDefault('marquee-agent-sandbox:latest'));
     const agentDailyUsdCap = yield* Config.number('AGENT_DAILY_USD_CAP').pipe(Config.withDefault(10));
     const agentJobUsdCap = yield* Config.number('AGENT_JOB_USD_CAP').pipe(Config.withDefault(0.75));
     const webBaseUrl        = yield* Config.string('NEXT_PUBLIC_APP_URL').pipe(Config.withDefault('http://localhost:3000'));
@@ -36,7 +37,7 @@ export class AppConfig extends Effect.Service<AppConfig>()('AppConfig', {
       openrouterSiteUrl, openrouterSiteName,
       falKey, falImageModel,
       agentMaxIterations, agentMaxToolCalls,
-      agentMaxJobSeconds, agentDailyUsdCap, agentJobUsdCap,
+      agentMaxJobSeconds, agentSandboxImage, agentDailyUsdCap, agentJobUsdCap,
       webBaseUrl, workerHttpUrl, outputsDir,
       r2AccountId, r2AccessKeyId, r2SecretAccessKey, r2Bucket, r2PublicUrl,
     } as const;

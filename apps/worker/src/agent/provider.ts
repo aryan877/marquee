@@ -12,7 +12,12 @@ export const makeOpenRouterProvider = (cfg: AppConfig) => {
     defaultHeaders: {
       'HTTP-Referer': cfg.openrouterSiteUrl,
       'X-Title': cfg.openrouterSiteName,
+      'X-OpenRouter-Title': cfg.openrouterSiteName,
     },
   });
-  return new OpenAIProvider({ openAIClient: client, useResponses: false });
+  return new OpenAIProvider({
+    openAIClient: client,
+    useResponses: false,
+    strictFeatureValidation: true,
+  });
 };

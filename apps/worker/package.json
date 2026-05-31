@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "node --env-file=../../.env --import tsx/esm src/index.ts",
     "build": "tsc",
+    "build:sandbox": "docker build -f Dockerfile.sandbox -t marquee-agent-sandbox:latest .",
     "start": "node dist/index.js",
     "typecheck": "tsc --noEmit"
   },
